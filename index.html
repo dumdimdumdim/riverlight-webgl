@@ -13,18 +13,19 @@
   <main class="riverlight-game" aria-label="Riverlight kayak game">
     <canvas tabindex="0" aria-label="River. Press the left or right arrow key, or tap a side of the river, to paddle."></canvas>
     <div class="grain" aria-hidden="true"></div>
-    <header class="masthead"><span class="edition">RIVERLIGHT <span> / </span> FIELD NOTES</span></header>
-    <section class="rl-intro" data-intro aria-labelledby="game-title">
-      <p class="eyebrow">A QUIET PADDLE</p>
-      <h1 id="game-title">Riverlight</h1>
-      <button class="launch" type="button">Take to the river <span aria-hidden="true">↗</span></button>
+    <section class="rl-intro" data-intro aria-label="Start Riverlight">
+      <button type="button">Tap or click to start</button>
+      <p>
+        <span class="rl-keyboard-hint">Use the ← and → arrow keys to paddle.</span>
+        <span class="rl-touch-hint">Tap left or right of the kayak to paddle.</span>
+      </p>
     </section>
     <p class="render-status" data-render-status role="status"></p>
     <div class="rl-controls" aria-label="Paddle controls">
       <button type="button" data-left aria-label="Paddle on the left">←</button>
-      <span>PADDLE</span>
       <button type="button" data-right aria-label="Paddle on the right">→</button>
     </div>
+    <a class="credit" href="https://kisleyko.com/">made by KK</a>
   </main>
 </body>
 </html>
