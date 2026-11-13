@@ -1,6 +1,6 @@
 import { KayakCore, deerLegPose } from "./core"
 import { RiverRenderer } from "./renderer"
-import { drawKayak } from "./kayak"
+import { drawKayak, paddlePose } from "./kayak"
 import type { Projected, Point, Deer, Habitat, RiverBird, Tree, Transform, Wake } from "./types"
 
 const FOCAL_RATIO = 1.08
@@ -1291,7 +1291,7 @@ export function mountRiverlight(root: HTMLElement) {
             points.push(p)
         }
         if (points.every((p) => C.depth(p.x, p.z) > 0)) poly(points, col, 0.11)
-        const pp = C.paddle(s),
+        const pp = paddlePose(s),
             shaft = [pp.blade, pp.other].map((b) => {
                 const p = tr(b)
                 p.x += offset * 0.6
