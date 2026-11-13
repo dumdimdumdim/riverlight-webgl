@@ -112,15 +112,24 @@ const armSides = 16
 const cuffRow = 7
 const hand = oval(point(0,0,0),point(.046,.048,.047),10,20)
 
-// Blade coordinates are along the shaft, across the blade and through its thickness.
+// A thin spoon: the working face opens toward the stern, with a slight
+// longitudinal bend and a deeper cup across the middle of the blade.
 const blade = surface((u,v) => {
-    const a = 2*Math.PI*v
-    const shape = u < .5
-        ? .018+.129*Math.sin(u*Math.PI)**1.48
-        : .147*Math.cos((u-.5)*Math.PI)**.64
-    const t = -.39+.673*u
-    return point(t,shape*Math.cos(a),.021*Math.sin(Math.PI*u)**.5*Math.sin(a)+.017*Math.sin(u*2.5))
-}, 30, 24, -1)
+    const angle = 2*Math.PI*v
+    const envelope = Math.sin(Math.PI*u)**.54
+    const across = Math.cos(angle)
+    const width = envelope*(.092+.064*C.clamp((u-.15)/.58,0,1))
+    const widthBias = 1+.11*across*Math.sin(Math.PI*u)
+    const cup = .023*envelope*(1-across*across)
+    const thickness = (.012-.008*u)*envelope*Math.sin(angle)
+    const bend = -.029*u*u
+    return point(-.425+.699*u,width*across*widthBias,bend+cup+thickness)
+}, 36, 32, -1)
+const bladeCollar = tubeSurface(
+    u => point(C.lerp(-.48,-.360,u),0,0),
+    u => C.lerp(.022,.015,u),
+    5, 14,
+)
 const gripFraction = .27
 const gripX = 1.48*gripFraction
 // Match the original: the shaft ends inside each grip, where it is hidden by the hand.
@@ -199,7 +208,8 @@ export function drawKayak(gpu: RiverRenderer, trip: Trip) {
         draw(armMesh.slice(cuffTriangle),"#be8258")
         draw(hand,"#c7895d",MATTE,p => add(grip,shaftDirection(p)),shaftDirection)
         const bladeDirection = (p: Point) =>
-            shaftDirection(point(p.x*sign,p.y,p.z*sign))
+            shaftDirection(point(p.x*sign,p.y,p.z))
+        draw(bladeCollar,"#655645",MATTE,p => add(end,bladeDirection(p)),bladeDirection)
         draw(blade,"#e8be78",VARNISH,p => add(end,bladeDirection(p)),bladeDirection)
     }
 }
