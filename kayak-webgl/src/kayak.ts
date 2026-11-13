@@ -89,8 +89,7 @@ const shirtColor = "#e8d3a7"
 const armRows = 18
 const armSides = 16
 const cuffRow = 7
-const hand = oval(point(0,0,0),point(.039,.043,.039),10,20)
-const thumb = oval(point(0,0,0),point(.026,.022,.025),8,14)
+const hand = oval(point(0,0,0),point(.046,.048,.047),10,20)
 
 // Blade coordinates are along the shaft, across the blade and through its thickness.
 const blade = surface((u,v) => {
@@ -101,21 +100,16 @@ const blade = surface((u,v) => {
     const t = -.39+.673*u
     return point(t,shape*Math.cos(a),.021*Math.sin(Math.PI*u)**.5*Math.sin(a)+.017*Math.sin(u*2.5))
 }, 30, 24, -1)
-const shaft = tubeSurface(u => point(C.lerp(-1.11,1.11,u),0,0), () => .0205, 2, 18)
-
-export function paddlePose(trip: Trip) {
-    const paddle = C.paddle(trip)
-    // Ease the resting pose out before the blade touches water.
-    const restBlend = 1-C.clamp(Math.min(paddle.u/.16,(1-paddle.u)/.16),0,1)
-    const resting = restBlend*restBlend*(3-2*restBlend)
-    const offset = point(0,.035*resting,.099*resting)
-    return {
-        ...paddle,
-        center: add(paddle.center,offset),
-        blade: add(paddle.blade,offset),
-        other: add(paddle.other,offset),
-    }
-}
+const gripFraction = .27
+const gripX = 1.48*gripFraction
+// Match the original: the shaft ends inside each grip, where it is hidden by the hand.
+const shaftSections = [
+    [-1.11,-gripX-.035],
+    [-gripX+.035,gripX-.035],
+    [gripX+.035,1.11],
+].map(([start,end]) =>
+    tubeSurface(u => point(C.lerp(start,end,u),0,0), () => .0205, 2, 18)
+)
 
 export function drawKayak(gpu: RiverRenderer, trip: Trip) {
     const co = Math.cos(trip.heading), si = Math.sin(trip.heading)
@@ -135,7 +129,7 @@ export function drawKayak(gpu: RiverRenderer, trip: Trip) {
     draw(rim,"#704229",LACQUER)
     for (const line of deckLine) draw(line,"#f3d583",LACQUER)
 
-    const pp = paddlePose(trip)
+    const pp = C.paddle(trip)
     const effort = trip.stroke ? Math.sin(Math.PI*pp.u)**2 : 0
     const lean = (p: Point) => point(p.x-pp.side*.035*effort,p.y,p.z)
     draw(shirt,shirtColor,MATTE,lean)
@@ -154,28 +148,33 @@ export function drawKayak(gpu: RiverRenderer, trip: Trip) {
     const upright = cross(side,axis)
     const shaftDirection = (p: Point) =>
         add(add(scale(axis,p.x),scale(upright,p.y)),scale(side,p.z))
-    draw(shaft,"#93663d",VARNISH,p => add(pp.center,shaftDirection(p)),shaftDirection)
+    for (const section of shaftSections)
+        draw(section,"#93663d",VARNISH,p => add(pp.center,shaftDirection(p)),shaftDirection)
 
     for (const [sign,end] of [[-1,left],[1,right]] as const) {
-        const grip = interpolate(pp.center,end,.25)
-        const palm = add(grip,shaftDirection(point(0,-.013,-.014)))
-        const wrist = add(grip,shaftDirection(point(0,-.029,-.043)))
-        const shoulder = lean(point(sign*.093,.557,-.357))
-        const elbowFromGrip = shaftDirection(point(-sign*.136,-.143+.033*effort,-.146))
-        const elbow = add(grip,elbowFromGrip)
-        const arm = (u: number) => interpolate(interpolate(shoulder,elbow,u),interpolate(elbow,wrist,u),u)
-        // Sleeve and forearm share a surface, so the cuff stays closed on every stroke.
-        const armMesh = tubeSurface(arm, u => {
-            const cuff = cuffRow/armRows
-            const falloff = Math.max(0,1-Math.abs(u-cuff)/.24)
-            return C.lerp(.056,.026,u)+.009*falloff
-        }, armRows, armSides)
+        const grip = interpolate(pp.center,end,gripFraction)
+        // Shoulder and elbow control points from the original Framer paddler.
+        const shoulder = lean(point(
+            sign*.205*Math.cos(pp.yaw),
+            .52,
+            -.37-sign*.205*Math.sin(pp.yaw*1.8),
+        ))
+        const elbow = point(
+            sign*(.25+.09*effort)*Math.cos(pp.yaw)+grip.x*.10,
+            (shoulder.y+grip.y)*.5-.025-.10*(1-effort),
+            -.25-sign*.22*Math.sin(pp.yaw)+(grip.z+.32)*.35,
+        )
+        const sleeveRoot = lean(point(sign*.125,.545,-.359))
+        const arm = (u: number) => {
+            const original = interpolate(interpolate(shoulder,elbow,u),interpolate(elbow,grip,u),u)
+            // Tuck the shoulder end into the shirt while preserving the forearm curve.
+            return add(original,scale(sub(sleeveRoot,shoulder),Math.max(0,1-u/.32)**2))
+        }
+        const armMesh = tubeSurface(arm, u => C.lerp(.061,.043,u), armRows, armSides)
         const cuffTriangle = cuffRow*armSides*2
         draw(armMesh.slice(0,cuffTriangle),shirtColor)
         draw(armMesh.slice(cuffTriangle),"#be8258")
-        draw(hand,"#c7895d",MATTE,p => add(palm,shaftDirection(p)),shaftDirection)
-        const thumbCenter = add(grip,shaftDirection(point(-sign*.018,.018,.012)))
-        draw(thumb,"#c7895d",MATTE,p => add(thumbCenter,shaftDirection(p)),shaftDirection)
+        draw(hand,"#c7895d",MATTE,p => add(grip,shaftDirection(p)),shaftDirection)
         const bladeDirection = (p: Point) =>
             shaftDirection(point(p.x*sign,p.y,p.z*sign))
         draw(blade,"#e8be78",VARNISH,p => add(end,bladeDirection(p)),bladeDirection)
