@@ -372,11 +372,9 @@ export function mountRiverlight(root: HTMLElement) {
     function shoreWidth(z: number) {
         return C.half(z) + .19*Math.sin(z*.63) + .09*Math.sin(z*1.47)
     }
-    function terrain() {
-        const start = Math.floor((cam.z + 2) / 2) * 2,
-            end = Math.ceil((s.z + 650) / 8) * 8
+    function terrain(start: number, transition: number, end: number) {
         for (let z = start; z < end; ) {
-            const zz = z + (z < Math.floor((s.z + 96) / 16) * 16 ? 2 : 8)
+            const zz = z + (z < transition ? 2 : 8)
             for (const side of [-1, 1]) {
                 const edge = (t: number) => C.center(t) + side * shoreWidth(t),
                     e = edge(z),
@@ -1308,18 +1306,20 @@ export function mountRiverlight(root: HTMLElement) {
     }
     function draw() {
         if (!w || !h || disposed || lost) return
+        // Tall viewports see water directly beneath the camera. Start both
+        // meshes behind it and let the GPU clip them at the near plane.
+        const start = Math.floor((cam.z - 1) / 2) * 2
+        const transition = Math.floor((s.z + 96) / 16) * 16
+        const end = Math.ceil((s.z + 650) / 8) * 8
         gpu.begin()
         material = 1
-        terrain()
+        terrain(start, transition, end)
         material = 0
         vegetation()
         wildlife()
         shadow()
         wake()
         drawKayak(gpu, s)
-        const start = Math.floor((cam.z + 2) / 2) * 2
-        const transition = Math.floor((s.z + 96) / 16) * 16
-        const end = Math.ceil((s.z + 650) / 8) * 8
         for (let z = start; z < end;) {
             const zz = z + (z < transition ? 2 : 8)
             gpu.water(z, zz, C.center(z), C.center(zz), shoreWidth(z), shoreWidth(zz))
