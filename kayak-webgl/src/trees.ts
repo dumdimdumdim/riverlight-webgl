@@ -8,6 +8,28 @@ type TreePart = { triangles: SmoothTriangle[]; tone: number; wood?: boolean }
 export function buildTree(kind: number, variant: number, woodland: boolean): TreePart[] {
     const parts: TreePart[] = []
     const rand = (n: number) => KayakCore.rand(n + kind*451 + variant*137)
+    if (kind === 3) {
+        // Low, overlapping crowns with no exposed trunk. One mesh per variant.
+        return Array.from({ length: 6 }, (_, i) => {
+            const direction = i * 2.399963
+            const reach = i === 0 ? 0 : .29 + rand(i+12)*.23
+            const height = i === 0 ? .62 : .34+rand(i+34)*.24
+            const width = .27+rand(i+23)*.14
+            const center = point(Math.cos(direction)*reach,height*.48,Math.sin(direction)*reach)
+            return {
+                triangles: surface((u,v) => {
+                    const latitude = u*Math.PI, angle = v*2*Math.PI
+                    const outline = Math.sin(latitude)*(1+.10*Math.sin(angle*3+latitude+i))
+                    return add(center,point(
+                        width*outline*Math.cos(angle),
+                        height*.53*Math.cos(latitude),
+                        width*.88*outline*Math.sin(angle),
+                    ))
+                }, 5, 9, -1),
+                tone: .77+rand(i+54)*.27,
+            }
+        })
+    }
     const lean = point((rand(1)-.5)*.38, 0, (rand(2)-.5)*.32)
     const trunk = (t: number) => point(lean.x*t*t, 2.65*t, lean.z*t*t)
     const branch = (a: Point, b: Point, thickness: number) => parts.push({

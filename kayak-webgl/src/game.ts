@@ -520,6 +520,29 @@ export function mountRiverlight(root: HTMLElement) {
                     woodland: true,
                 })
             }
+            // Small groups at uneven depths leave open banks between thickets.
+            for (let group = 0; group < 2; group++) {
+                const patch = seed*233 + 4729 + group*113
+                if (C.rand(patch) < (group === 0 ? .26 : .48)) continue
+                const patchZ = i*18 + C.rand(patch+1)*18
+                const setback = group === 0 ? 1.4+C.rand(patch+2)*4.2 : 7+C.rand(patch+2)*12
+                const count = 2+Math.floor(C.rand(patch+3)*3)
+                for (let j = 0; j < count; j++) {
+                    const pick = patch + j*67
+                    const z = patchZ + (j-(count-1)*.5)*1.55 + (C.rand(pick+7)-.5)*1.6
+                    const depth = setback + C.rand(pick+8)*2.0
+                    const shade = C.rand(pick+9)
+                    list.push({
+                        x: C.center(z)+side*(shoreWidth(z)+depth),
+                        y: .21,
+                        z,
+                        size: .94+C.rand(pick+10)*1.18,
+                        seed: pick,
+                        color: shade < .48 ? "#597548" : shade < .85 ? "#78874b" : "#9b8d51",
+                        shrub: true,
+                    })
+                }
+            }
         }
         trees.set(i, list)
         return list
@@ -527,7 +550,7 @@ export function mountRiverlight(root: HTMLElement) {
     function makeTree(o: Tree, fade: number) {
         if (fade <= 0) return
         const base = project({ x: o.x, y: o.y, z: o.z }),
-            top = project({ x: o.x, y: o.y + o.size * 3.3, z: o.z }),
+            top = project({ x: o.x, y: o.y + o.size * (o.shrub ? .7 : 3.3), z: o.z }),
             edge = project({ x: o.x + o.size * 1.30, y: o.y, z: o.z })
         if (!base || !top || !edge) return
         const height = base.y - top.y,
@@ -540,7 +563,7 @@ export function mountRiverlight(root: HTMLElement) {
             top.y > h
         )
             return
-        const kind = Math.floor(C.rand(o.seed + 93) * 3)
+        const kind = o.shrub ? 3 : Math.floor(C.rand(o.seed + 93) * 3)
         const variant = Math.floor(C.rand(o.seed + 23) * 3)
         gpu.tree(o, kind, variant, fade, o.woodland === true)
     }
@@ -548,8 +571,12 @@ export function mountRiverlight(root: HTMLElement) {
         const a = Math.floor((cam.z - 5) / 18),
             b = Math.floor((s.z + 274) / 18)
         for (let i = a; i <= b; i++)
-            for (const t of treeChunk(i))
-                makeTree(t, 1 - C.clamp((t.z - s.z - 160) / 105, 0, 1))
+            for (const t of treeChunk(i)) {
+                const distance = t.z-s.z
+                const fade = t.shrub ? 1-C.clamp((distance-95)/55,0,1)
+                    : 1-C.clamp((distance-160)/105,0,1)
+                makeTree(t,fade)
+            }
         for (const k of trees.keys())
             if (k < a - 1 || k > b + 1) trees.delete(k)
     }

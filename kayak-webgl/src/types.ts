@@ -91,5 +91,6 @@ export type Tree = {
     seed: number
     color: string
     woodland?: boolean
+    shrub?: boolean
 }
 export type Transform = ((point: Point) => Point) | null
