@@ -60,14 +60,17 @@ const vest = oval(point(0,.401,-.36),point(.195,.218,.143),18,32)
 const shirt = oval(point(0,.503,-.359),point(.203,.112,.127),15,32)
 const neck = oval(point(0,.589,-.322),point(.071,.092,.07),12,20)
 const face = oval(point(0,.704,-.312),point(.112,.13,.114),20,32)
-const crown = oval(point(0,.801,-.326),point(.129,.077,.131),18,32)
-const band = oval(point(0,.772,-.327),point(.132,.024,.134),9,32)
-const brim = oval(point(0,.764,-.311),point(.187,.017,.175),12,42)
-const straps = [-1,1].map(side => tubeSurface(u => {
-    const { x,y,z } = point(side*(.097+.015*u),.356+.205*u,-.476)
-    const backing = Math.sqrt(Math.max(0,1-(x/.195)**2-((y-.401)/.218)**2))
-    return point(x,y,Math.min(z,-.36-.143*backing-.006))
-}, () => .012,12,8))
+const capCrown = surface((u,v) => {
+    const latitude = u*Math.PI/2, angle = v*2*Math.PI
+    const ring = Math.sin(latitude)
+    return point(.128*ring*Math.cos(angle), .763+.087*Math.cos(latitude), -.313+.136*ring*Math.sin(angle))
+}, 16, 36, -1)
+const capBill = oval(point(0,.762,-.181),point(.107,.012,.122),10,34)
+const capButton = oval(point(0,.85,-.313),point(.022,.008,.022),7,14)
+const shirtColor = "#e8d3a7"
+const armRows = 18
+const armSides = 16
+const cuffRow = 7
 const hand = oval(point(0,0,0),point(.046,.045,.05),10,20)
 
 // Blade coordinates are along the shaft, across the blade and through its thickness.
@@ -102,14 +105,14 @@ export function drawKayak(gpu: RiverRenderer, trip: Trip) {
     const pp = C.paddle(trip)
     const effort = trip.stroke ? Math.sin(Math.PI*pp.u)**2 : 0
     const lean = (p: Point) => point(p.x-pp.side*.035*effort,p.y,p.z)
-    draw(shirt,"#e8d3a7",MATTE,lean)
+    draw(shirt,shirtColor,MATTE,lean)
     draw(vest,"#ab4e36",MATTE,lean)
-    for (const strap of straps) draw(strap,"#743d2b",MATTE,lean)
     draw(neck,"#ba7b50",MATTE,lean)
     draw(face,"#c7895d",MATTE,lean)
-    draw(brim,"#c39552",MATTE,lean)
-    draw(crown,"#d6aa64",MATTE,lean)
-    draw(band,"#886444",MATTE,lean)
+    draw(capBill,"#385446",MATTE,p => lean(point(p.x,p.y-.20*(p.z+.313)-.8*p.x*p.x,p.z)),
+        n => unit(point(n.x,.98*n.y+.20*n.z,.98*n.z-.20*n.y)))
+    draw(capCrown,"#46634e",MATTE,lean)
+    draw(capButton,"#385446",MATTE,lean)
 
     const left = pp.blade.x < pp.other.x ? pp.blade : pp.other
     const right = left === pp.blade ? pp.other : pp.blade
@@ -122,15 +125,22 @@ export function drawKayak(gpu: RiverRenderer, trip: Trip) {
 
     for (const [sign,end] of [[-1,left],[1,right]] as const) {
         const grip = interpolate(pp.center,end,.27)
-        const shoulder = lean(point(sign*.173*Math.cos(pp.yaw),.518,-.374-sign*.19*Math.sin(pp.yaw*1.8)))
+        const shoulder = lean(point(sign*.095,.526,-.357))
         const elbow = point(
             sign*(.23+.092*effort)*Math.cos(pp.yaw)+grip.x*.10,
             (shoulder.y+grip.y)*.5-.125+.10*effort,
             -.25-sign*.22*Math.sin(pp.yaw)+(grip.z+.32)*.35,
         )
         const arm = (u: number) => interpolate(interpolate(shoulder,elbow,u),interpolate(elbow,grip,u),u)
-        draw(tubeSurface(arm,u => C.lerp(.067,.034,u),13,15),"#be8258")
-        draw(tubeSurface(u => arm(u*.29),u => .073-u*.009,5,15),"#e8d3a7")
+        // Sleeve and forearm share a surface, so the cuff stays closed on every stroke.
+        const armMesh = tubeSurface(arm, u => {
+            const cuff = cuffRow/armRows
+            const falloff = Math.max(0,1-Math.abs(u-cuff)/.24)
+            return C.lerp(.071,.034,u)+.010*falloff
+        }, armRows, armSides)
+        const cuffTriangle = cuffRow*armSides*2
+        draw(armMesh.slice(0,cuffTriangle),shirtColor)
+        draw(armMesh.slice(cuffTriangle),"#be8258")
         draw(hand,"#c7895d",MATTE,p => add(p,grip))
         const bladeDirection = (p: Point) =>
             shaftDirection(point(p.x*sign,p.y,p.z*sign))

@@ -475,7 +475,7 @@ export function mountRiverlight(root: HTMLElement) {
     }
     function treeChunk(i: number): Tree[] {
         if (trees.has(i)) return trees.get(i)!
-        const list = []
+        const list: Tree[] = []
         for (const side of [-1, 1]) {
             const seed = i * 101 + side * 7,
                 lush = 0.5 + 0.5 * Math.sin(i * 0.72 + side),
@@ -507,6 +507,24 @@ export function mountRiverlight(root: HTMLElement) {
                                 : colors.rust,
                 })
             }
+            // Overlapping clusters give the forest depth while leaving gaps near the water.
+            const groveDepth = 17 + C.rand(seed+442)*9
+            const groveZ = i*18 + 4 + C.rand(seed+443)*11
+            for (let k = 0; k < (lush > .46 ? 5 : 3); k++) {
+                const pick = seed*17 + 701 + k*137
+                const z = groveZ + (C.rand(pick+2)-.5)*23
+                const offset = groveDepth + (k%3)*9 + C.rand(pick+4)*5
+                const shade = C.rand(pick+9)
+                list.push({
+                    x: C.center(z) + side*(C.half(z)+offset),
+                    y: .22,
+                    z,
+                    size: 2.45 + C.rand(pick+3)*2.7,
+                    seed: pick,
+                    color: shade < .48 ? "#506b4b" : shade < .85 ? "#6b784e" : "#9a8f56",
+                    woodland: true,
+                })
+            }
         }
         trees.set(i, list)
         return list
@@ -514,8 +532,8 @@ export function mountRiverlight(root: HTMLElement) {
     function makeTree(o: Tree, fade: number) {
         if (fade <= 0) return
         const base = project({ x: o.x, y: o.y, z: o.z }),
-            top = project({ x: o.x, y: o.y + o.size * 2.6, z: o.z }),
-            edge = project({ x: o.x + o.size * 0.83, y: o.y, z: o.z })
+            top = project({ x: o.x, y: o.y + o.size * 3.3, z: o.z }),
+            edge = project({ x: o.x + o.size * 1.30, y: o.y, z: o.z })
         if (!base || !top || !edge) return
         const height = base.y - top.y,
             width = Math.abs(edge.x - base.x) * 2
@@ -529,7 +547,7 @@ export function mountRiverlight(root: HTMLElement) {
             return
         const kind = Math.floor(C.rand(o.seed + 93) * 3)
         const variant = Math.floor(C.rand(o.seed + 23) * 3)
-        gpu.tree(o, kind, variant, fade, base.d < 54)
+        gpu.tree(o, kind, variant, fade, o.woodland === true)
     }
     function vegetation() {
         const a = Math.floor((cam.z - 5) / 18),

@@ -88,17 +88,20 @@ class Mesh {
         gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer)
         gl.bufferData(gl.ARRAY_BUFFER, this.floats.subarray(0, this.size), usage)
     }
-    drawInstances(instances: Float32Array, count: number, buffer: WebGLBuffer) {
+    attachInstances(buffer: WebGLBuffer) {
         const gl = this.gl
         gl.bindVertexArray(this.vao)
         gl.bindBuffer(gl.ARRAY_BUFFER, buffer)
-        gl.bufferData(gl.ARRAY_BUFFER, instances.subarray(0, count*12), gl.STREAM_DRAW)
         for (let i = 0; i < 3; i++) {
             gl.enableVertexAttribArray(3+i)
             gl.vertexAttribPointer(3+i, 4, gl.FLOAT, false, 48, i*16)
             gl.vertexAttribDivisor(3+i, 1)
         }
-        gl.drawArraysInstanced(gl.TRIANGLES, 0, this.size / STRIDE, count)
+        gl.bindVertexArray(null)
+    }
+    drawInstances(count: number) {
+        this.gl.bindVertexArray(this.vao)
+        this.gl.drawArraysInstanced(this.gl.TRIANGLES, 0, this.size / STRIDE, count)
     }
     draw() {
         if (!this.size) return
@@ -114,8 +117,7 @@ class Mesh {
 export class RiverRenderer {
     private gl: WebGL2RenderingContext
     private solid: Mesh
-    private treeMeshes = new Map<number, { mesh: Mesh; data: Float32Array; count: number }>()
-    private treeInstances: WebGLBuffer
+    private treeMeshes = new Map<number, { mesh: Mesh; buffer: WebGLBuffer; data: Float32Array; count: number }>()
     private boat: Mesh
     private decals: Mesh
     private river: Mesh
@@ -141,7 +143,6 @@ export class RiverRenderer {
         this.background = compile(gl, shader.backgroundVertex, shader.backgroundFragment)
         this.solid = new Mesh(gl)
         this.boat = new Mesh(gl)
-        this.treeInstances = gl.createBuffer()!
         this.decals = new Mesh(gl)
         this.river = new Mesh(gl)
         this.reflection = gl.createFramebuffer()!
@@ -180,16 +181,18 @@ export class RiverRenderer {
     smooth(triangles: SmoothTriangle[], color: string, material: number, transform: (p: Point) => Point, rotate: (p: Point) => Point) {
         this.boat.smooth(triangles, this.color(color), material, transform, rotate)
     }
-    tree(o: Tree, kind: number, variant: number, fade: number, nearby: boolean) {
-        const id = kind * 6 + variant * 2 + Number(nearby)
+    tree(o: Tree, kind: number, variant: number, fade: number, woodland: boolean) {
+        const id = kind * 6 + variant * 2 + Number(woodland)
         let batch = this.treeMeshes.get(id)
         if (!batch) {
             const mesh = new Mesh(this.gl)
             const identity = (p: Point) => p
-            for (const part of buildTree(kind, variant, nearby))
+            for (const part of buildTree(kind, variant, woodland))
                 mesh.smooth(part.triangles, [part.tone,part.tone,part.tone], part.wood ? 4 : 5, identity, identity)
             mesh.upload(this.gl.STATIC_DRAW)
-            batch = { mesh, data: new Float32Array(32*12), count: 0 }
+            const buffer = this.gl.createBuffer()!
+            mesh.attachInstances(buffer)
+            batch = { mesh, buffer, data: new Float32Array(32*12), count: 0 }
             this.treeMeshes.set(id, batch)
         }
         const offset = batch.count++ * 12
@@ -244,11 +247,16 @@ export class RiverRenderer {
             this.boat.draw()
             gl.uniform1i(this.scene.uniform("mode"),1)
             for (const batch of this.treeMeshes.values()) {
-                if (batch.count) batch.mesh.drawInstances(batch.data, batch.count, this.treeInstances)
+                if (batch.count) batch.mesh.drawInstances(batch.count)
             }
         }
 
         for (const mesh of [this.solid,this.boat,this.river,this.decals]) mesh.upload()
+        for (const batch of this.treeMeshes.values()) {
+            if (!batch.count) continue
+            gl.bindBuffer(gl.ARRAY_BUFFER, batch.buffer)
+            gl.bufferData(gl.ARRAY_BUFFER, batch.data.subarray(0, batch.count*12), gl.STREAM_DRAW)
+        }
         this.resizeReflection()
         gl.viewport(0,0,this.reflectionWidth,this.reflectionHeight)
         gl.clearColor(0,0,0,0)
@@ -296,8 +304,10 @@ export class RiverRenderer {
         gl.deleteFramebuffer(this.reflection)
         gl.deleteRenderbuffer(this.reflectedDepth)
         gl.deleteTexture(this.reflectedColor)
-        gl.deleteBuffer(this.treeInstances)
-        for (const batch of this.treeMeshes.values()) batch.mesh.destroy()
+        for (const batch of this.treeMeshes.values()) {
+            gl.deleteBuffer(batch.buffer)
+            batch.mesh.destroy()
+        }
         this.treeMeshes.clear()
     }
 }
