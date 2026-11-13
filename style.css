@@ -1,0 +1,44 @@
+:root{color-scheme:dark;font-family:system-ui,sans-serif;color:#fff7e4;background:#203e3a}
+*{box-sizing:border-box}
+body{margin:0}
+button{font:inherit;color:inherit;cursor:pointer;touch-action:none}
+button:focus-visible{outline:2px solid #fff5d8;outline-offset:4px}
+[hidden]{display:none!important}
+.riverlight-game{position:relative;width:100%;height:100vh;height:100dvh;overflow:hidden;isolation:isolate;touch-action:none;background:radial-gradient(ellipse at 36% 23%,#bc966c,#294e48 70%)}
+canvas,.grain{position:absolute;inset:0;width:100%;height:100%;display:block}
+canvas:focus{outline:none}
+canvas:focus-visible{outline:2px solid #fff5d8;outline-offset:-4px}
+.grain{pointer-events:none;background:linear-gradient(180deg,#172b2060,transparent 18%,transparent 72%,#0917139c);box-shadow:inset 0 0 160px #10231830}
+.masthead{position:absolute;top:max(26px,env(safe-area-inset-top));left:max(28px,env(safe-area-inset-left));pointer-events:none}
+.edition,.eyebrow,.rl-controls>span{font-size:10px;letter-spacing:.22em;font-weight:640;text-shadow:0 1px 7px #152922}
+.edition>span{padding:0 .5em;color:#e2b475}
+.rl-intro{position:absolute;inset:23% 16px auto;text-align:center;pointer-events:none;text-shadow:0 2px 24px #132e2b80}
+.eyebrow{margin:0;color:#fff2cf}
+h1{margin:.06em 0 .22em;font:italic 400 clamp(4rem,12vw,9.5rem)/.98 Georgia,serif;letter-spacing:-.078em}
+.launch{pointer-events:auto;background:#233b32e8;color:#fff6df;border:1px solid #e5d6a875;border-radius:25px;padding:11px 18px;font-size:13px;font-weight:580}
+.launch>span{margin-left:8px;color:#f6d695}
+.launch:hover{background:#314a3c}
+.rl-controls{position:absolute;left:50%;transform:translateX(-50%);bottom:max(24px,env(safe-area-inset-bottom));display:flex;align-items:center;gap:14px;pointer-events:none}
+.rl-controls button,.rl-lamp{display:grid;place-items:center;width:48px;height:48px;padding:0;border:1px solid #f8e7c477;border-radius:50%;background:#173932d9;pointer-events:auto}
+.rl-controls button{font-size:21px}
+.rl-controls button:hover,.rl-lamp:hover{background:#2d4f44}
+.rl-controls button[data-active=true],.rl-controls button:active{background:#f8e7c4;color:#203b33}
+.rl-lamp{position:absolute;right:max(24px,env(safe-area-inset-right));top:max(18px,env(safe-area-inset-top));z-index:2}
+.rl-lamp svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.rl-stats{position:absolute;top:max(73px,calc(env(safe-area-inset-top) + 53px));right:max(24px,env(safe-area-inset-right));display:flex;flex-direction:column;gap:3px;min-width:118px;padding:11px 14px;color:#fff6df;border:1px solid #f8e7c443;border-radius:10px;background:#173932eb;visibility:hidden;font-size:12px;font-variant-numeric:tabular-nums;pointer-events:none}
+.rl-stats[data-open=true]{visibility:visible}
+.render-status{position:absolute;top:66%;inset-inline:15px;margin:auto;text-align:center;color:#fff3d6}
+[data-renderer=unavailable] .rl-intro button,[data-renderer=unavailable] .rl-controls{display:none}
+[data-renderer=paused] .render-status::after{content:"Reconnecting to the river…"}
+@media(max-width:600px){
+  .masthead{left:max(18px,env(safe-area-inset-left))}
+  .rl-intro{inset-block-start:29%}
+  .rl-controls{left:max(22px,env(safe-area-inset-left));right:max(22px,env(safe-area-inset-right));transform:none;justify-content:space-between}
+  .rl-controls button{width:56px;height:56px}
+  .rl-lamp,.rl-stats{right:max(16px,env(safe-area-inset-right))}
+}
+@media(max-height:480px) and (orientation:landscape){
+  .rl-intro{inset-block-start:16%}
+  h1{font-size:clamp(3rem,18vh,5rem)}
+  .rl-controls{bottom:12px}
+}
