@@ -80,6 +80,8 @@ const vest = oval(point(0,.424,-.36),point(.151,.217,.106),18,32)
 const shirt = oval(point(0,.546,-.359),point(.171,.102,.098),15,32)
 const neck = oval(point(0,.638,-.322),point(.052,.085,.05),12,20)
 const face = oval(point(0,.734,-.312),point(.092,.111,.094),20,32)
+const capBase = .783
+const capCenter = -.312
 const capCrown = surface((u,v) => {
     const latitude = u*Math.PI/2
     const angle = v*2*Math.PI
@@ -87,24 +89,23 @@ const capCrown = surface((u,v) => {
     const front = Math.sin(angle)
     return point(
         .106*ring*Math.cos(angle),
-        .776+(.092+.024*front)*Math.cos(latitude)**.72,
-        -.312+.110*ring*front+.012*Math.cos(latitude),
+        capBase+.101*Math.cos(latitude)**.78+.015*front*ring*(1-ring),
+        capCenter+.111*ring*front+.013*Math.cos(latitude),
     )
-}, 16, 36, -1)
+}, 20, 40, -1)
+const capBand = tubeSurface(u => {
+    const angle = u*2*Math.PI
+    return point(.105*Math.cos(angle),capBase,capCenter+.110*Math.sin(angle))
+}, () => .005,36,8)
 const capBill = surface((u,v) => {
-    const latitude = Math.PI*u
-    const angle = 2*Math.PI*v
+    const latitude = u*Math.PI
+    const angle = v*2*Math.PI
     const ring = Math.sin(latitude)
-    const z = -.172+.128*Math.cos(latitude)
-    const width = .024+.098*(1-Math.max(0,(z+.172)/.128)**2)
-    const x = width*ring*Math.cos(angle)
-    return point(x,.777+.009*ring*Math.sin(angle)-1.35*x*x-.065*(z+.172),z)
-}, 18, 34)
-const capSeam = tubeSurface(u => {
-    const angle = Math.PI*(.85+1.30*u)
-    return point(.1065*Math.cos(angle),.783,-.312+.1105*Math.sin(angle))
-}, u => .0027*Math.sin(Math.PI*u),22,6)
-const capButton = oval(point(0,.869,-.30),point(.011,.005,.011),7,14)
+    const z = -.162+.102*Math.cos(latitude)
+    const x = .105*ring*Math.cos(angle)
+    return point(x,capBase-.006+.007*ring*Math.sin(angle)-1.4*x*x-.12*(z+.20),z)
+}, 20, 36)
+const capButton = oval(point(0,.883,capCenter+.013),point(.010,.005,.010),8,16)
 const shirtColor = "#e8d3a7"
 const armRows = 18
 const armSides = 16
@@ -160,7 +161,7 @@ export function drawKayak(gpu: RiverRenderer, trip: Trip) {
     draw(face,"#c7895d",MATTE,lean)
     draw(capBill,"#294748",MATTE,lean)
     draw(capCrown,"#3e6665",MATTE,lean)
-    draw(capSeam,"#2f5150",MATTE,lean)
+    draw(capBand,"#385c5a",MATTE,lean)
     draw(capButton,"#294748",MATTE,lean)
 
     const left = pp.blade.x < pp.other.x ? pp.blade : pp.other

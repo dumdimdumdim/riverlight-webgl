@@ -9,36 +9,51 @@ canvas,.grain{position:absolute;inset:0;width:100%;height:100%;display:block}
 canvas:focus{outline:none}
 canvas:focus-visible{outline:2px solid #fff5d8;outline-offset:-4px}
 .grain{pointer-events:none;background:linear-gradient(180deg,#172b2060,transparent 18%,transparent 72%,#0917139c);box-shadow:inset 0 0 160px #10231830}
-.masthead{position:absolute;top:max(26px,env(safe-area-inset-top));left:max(28px,env(safe-area-inset-left));pointer-events:none}
-.edition,.eyebrow,.rl-controls>span{font-size:10px;letter-spacing:.22em;font-weight:640;text-shadow:0 1px 7px #152922}
-.edition>span{padding:0 .5em;color:#e2b475}
-.rl-intro{position:absolute;inset:23% 16px auto;text-align:center;pointer-events:none;text-shadow:0 2px 24px #132e2b80}
-.eyebrow{margin:0;color:#fff2cf}
-h1{margin:.06em 0 .22em;font:italic 400 clamp(4rem,12vw,9.5rem)/.98 Georgia,serif;letter-spacing:-.078em}
-.launch{pointer-events:auto;background:#233b32e8;color:#fff6df;border:1px solid #e5d6a875;border-radius:25px;padding:11px 18px;font-size:13px;font-weight:580}
-.launch>span{margin-left:8px;color:#f6d695}
-.launch:hover{background:#314a3c}
-.rl-controls{position:absolute;left:50%;transform:translateX(-50%);bottom:max(24px,env(safe-area-inset-bottom));display:flex;align-items:center;gap:14px;pointer-events:none}
-.rl-controls button,.rl-lamp{display:grid;place-items:center;width:48px;height:48px;padding:0;border:1px solid #f8e7c477;border-radius:50%;background:#173932d9;pointer-events:auto}
-.rl-controls button{font-size:21px}
-.rl-controls button:hover,.rl-lamp:hover{background:#2d4f44}
-.rl-controls button[data-active=true],.rl-controls button:active{background:#f8e7c4;color:#203b33}
-.rl-lamp{position:absolute;right:max(24px,env(safe-area-inset-right));top:max(18px,env(safe-area-inset-top));z-index:2}
-.rl-lamp svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
-.rl-stats{position:absolute;top:max(73px,calc(env(safe-area-inset-top) + 53px));right:max(24px,env(safe-area-inset-right));display:flex;flex-direction:column;gap:3px;min-width:118px;padding:11px 14px;color:#fff6df;border:1px solid #f8e7c443;border-radius:10px;background:#173932eb;visibility:hidden;font-size:12px;font-variant-numeric:tabular-nums;pointer-events:none}
-.rl-stats[data-open=true]{visibility:visible}
+.rl-intro{position:absolute;inset:34% 16px auto;text-align:center;color:#fff1d5;pointer-events:none;text-shadow:0 1px 12px #17393280}
+.rl-intro button{pointer-events:auto;border:0;background:none;color:inherit;font:clamp(19px,4vw,38px)/1.2 Georgia,serif;padding:12px 4px}
+.rl-intro p{margin:8px 0 0;font-size:clamp(12px,2.4vw,15px);line-height:1.5}
+.rl-touch-hint{display:none}
+.rl-controls{position:absolute;inset-inline:0;bottom:max(20px,env(safe-area-inset-bottom));display:flex;justify-content:center;gap:12px;pointer-events:none}
+.rl-controls button,.rl-lamp{display:grid;place-items:center;padding:0;border:1px solid transparent;background:transparent;color:#fff;pointer-events:auto}
+.rl-controls button{width:52px;height:46px;border-radius:11px;font-size:24px;line-height:1;user-select:none;transition:transform 120ms}
+.rl-controls button:active,.rl-controls button[data-active=true]{transform:translateY(2px)}
+.rl-lamp{position:absolute;right:max(14px,env(safe-area-inset-right));top:max(14px,env(safe-area-inset-top));width:34px;height:34px;border-radius:50%;z-index:3}
+.rl-lamp svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.rl-stats{position:absolute;top:max(14px,env(safe-area-inset-top));left:14px;right:58px;display:flex;justify-content:center;align-items:center;flex-wrap:wrap;gap:22px;min-height:34px;padding:8px 12px;color:#fff;visibility:hidden;pointer-events:none}
+.rl-stat{font-size:17px;line-height:1.5;font-variant-numeric:tabular-nums;transform:scaleY(1.16)}
+.rl-stats[data-open=true]{visibility:visible;animation:rl-stats-reveal 8s ease-out both}
+@keyframes rl-stats-reveal{
+  0%{opacity:0;transform:translateY(9px)}
+  12%,65%{opacity:1;transform:translateY(0)}
+  100%{opacity:0;transform:translateY(-10px)}
+}
+@media(prefers-reduced-motion:reduce){
+  .rl-stats[data-open=true]{animation-name:rl-stats-fade}
+  .rl-controls button{transition:none}
+}
+@keyframes rl-stats-fade{0%,28%{opacity:1}100%{opacity:0}}
+.credit{position:absolute;right:max(22px,env(safe-area-inset-right));bottom:max(19px,env(safe-area-inset-bottom));padding:5px 2px;color:#fff1d5;font-size:12px;text-decoration:none}
+.credit:hover,.credit:focus-visible{text-decoration:underline}
 .render-status{position:absolute;top:66%;inset-inline:15px;margin:auto;text-align:center;color:#fff3d6}
 [data-renderer=unavailable] .rl-intro button,[data-renderer=unavailable] .rl-controls{display:none}
 [data-renderer=paused] .render-status::after{content:"Reconnecting to the river…"}
-@media(max-width:600px){
-  .masthead{left:max(18px,env(safe-area-inset-left))}
-  .rl-intro{inset-block-start:29%}
-  .rl-controls{left:max(22px,env(safe-area-inset-left));right:max(22px,env(safe-area-inset-right));transform:none;justify-content:space-between}
-  .rl-controls button{width:56px;height:56px}
-  .rl-lamp,.rl-stats{right:max(16px,env(safe-area-inset-right))}
+@media(pointer:coarse),(max-width:600px){
+  .rl-keyboard-hint{display:none}
+  .rl-touch-hint{display:inline}
 }
-@media(max-height:480px) and (orientation:landscape){
-  .rl-intro{inset-block-start:16%}
-  h1{font-size:clamp(3rem,18vh,5rem)}
-  .rl-controls{bottom:12px}
+@media(max-width:600px){
+  .rl-intro{inset-block-start:38%}
+  .rl-controls{inset-inline:20px;bottom:max(46px,calc(env(safe-area-inset-bottom) + 30px));justify-content:space-between}
+  .rl-controls button{width:64px;height:64px;border:1px solid #fff1d5b3;border-bottom-width:3px;border-radius:16px;background:#234841e6;color:#fff1d5;box-shadow:0 4px 16px #1237313d;font-size:32px}
+  .rl-controls button:active,.rl-controls button[data-active=true]{background:#fff1d5;color:#234841;border-color:#fff1d5}
+  .rl-lamp{width:64px;height:64px;right:16px;top:max(16px,env(safe-area-inset-top))}
+  .rl-lamp svg{width:36px;height:36px}
+  .rl-stats{left:16px;right:96px;top:max(16px,env(safe-area-inset-top));min-height:64px;padding:0;flex-direction:column;align-items:flex-start;gap:2px}
+  .rl-stat{font-size:18px;line-height:26px;transform:none}
+  .credit{right:20px;bottom:max(10px,env(safe-area-inset-bottom))}
+}
+@media(max-height:300px){
+  .rl-intro{inset-block-start:12%}
+  .rl-intro button{font-size:21px}
+  .rl-controls button{width:46px;height:40px}
 }

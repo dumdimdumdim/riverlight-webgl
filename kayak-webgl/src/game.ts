@@ -122,9 +122,7 @@ export function mountRiverlight(root: HTMLElement) {
         })
         on(lamp, "click", (e) => {
             e.stopPropagation()
-            // Hover reveals on desktop; click remains a touch/keyboard fallback.
-            if (!matchMedia("(hover: hover)").matches || e.detail === 0)
-                showStats()
+            showStats()
             canvas.focus({ preventScroll: true })
         })
     }
@@ -713,7 +711,7 @@ export function mountRiverlight(root: HTMLElement) {
                     effort,
                     bounce
                 )
-                rod(hip, knee, front > 0 ? 0.065 : 0.075, coat, tr)
+                rod(torsoTr(hip), tr(knee), front > 0 ? 0.065 : 0.075, coat)
                 // Keep the actual forward-facing stifle visible below the flank.
                 if (front < 0)
                     body(knee.x, knee.y, knee.z, 0.075, 0.08, 0.075, coat)
@@ -759,11 +757,18 @@ export function mountRiverlight(root: HTMLElement) {
                 rz: number,
                 color: string
             ) => ellipsoid(x, y, z, rx, ry, rz, color, o.phase, 8, 4, headTr)
-        rod(
-            tr({ x: 0, y: 0.98, z: 0.36 }),
-            headTr({ x: 0, y: 1.65, z: 0.64 }),
-            0.12,
-            coat
+        const neckBase = torsoTr({ x: 0, y: 1.01, z: .36 })
+        const neckEnd = headTr({ x: 0, y: 1.65, z: .64 })
+        tube(
+            [neckBase, {
+                x: C.lerp(neckBase.x, neckEnd.x, .51),
+                y: C.lerp(neckBase.y, neckEnd.y, .51) + .035,
+                z: C.lerp(neckBase.z, neckEnd.z, .51),
+            }, neckEnd],
+            [.157, .109, .074],
+            coat,
+            p => p,
+            8
         )
         headBody(0, 1.73, 0.74, 0.13, 0.16, 0.24, coat)
         headBody(0, 1.64, 0.98, 0.095, 0.08, 0.14, dark)
@@ -1109,13 +1114,12 @@ export function mountRiverlight(root: HTMLElement) {
                 5
             )
             shape(0, headY, headZ, 0.09, 0.1, 0.12, col)
-            face(
-                [
-                    tr({ x: 0, y: headY + 0.025, z: headZ + 0.08 }),
-                    tr({ x: 0, y: headY - 0.025, z: headZ + 0.08 }),
-                    tr({ x: 0, y: headY - 0.02, z: headZ + 0.4 }),
-                ],
-                "#b58b4f"
+            tube(
+                [{x:0,y:headY,z:headZ+.075},{x:0,y:headY-.018,z:headZ+.40}],
+                [.036,.003],
+                "#b58b4f",
+                tr,
+                5
             )
             for (const side of [-1, 1]) {
                 const end = {
@@ -1131,7 +1135,7 @@ export function mountRiverlight(root: HTMLElement) {
                     tr
                 )
             }
-        } else shape(0, 0.59, 0.28, 0.14, 0.13, 0.14, col)
+        } else shape(0, bodyY+.14, .27, .13, .13, .15, col)
         if (o.flying)
             for (const side of [-1, 1]) {
                 face(
@@ -1395,7 +1399,10 @@ export function mountRiverlight(root: HTMLElement) {
                 begin()
             }
         })
-        on(root, "click", begin)
+        on(root, "click", (e) => {
+            if (e.target instanceof Element && e.target.closest("a")) return
+            begin()
+        })
         for (const [b, side] of [
             [left, 1],
             [right, -1],
@@ -1414,7 +1421,8 @@ export function mountRiverlight(root: HTMLElement) {
                 e.preventDefault()
                 e.stopPropagation()
                 if (!e.repeat) input(e.key === "ArrowLeft" ? 1 : -1)
-            } else if (!started && ["Enter", " "].includes(e.key)) {
+            } else if (!started && ["Enter", " "].includes(e.key) &&
+                !(e.target instanceof Element && e.target.closest("a"))) {
                 e.preventDefault()
                 begin()
             }
