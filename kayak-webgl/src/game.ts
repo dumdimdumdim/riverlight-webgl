@@ -544,6 +544,22 @@ export function mountRiverlight(root: HTMLElement) {
                 }
             }
         }
+        // Frame the launch with a low thicket visible from the centre of the river.
+        if (i === 1) {
+            for (let j = 0; j < 4; j++) {
+                const z = 20 + j*1.75
+                const seed = 6389+j*67
+                list.push({
+                    x: C.center(z)-shoreWidth(z)-2.6-C.rand(seed)*2.4,
+                    y: .21,
+                    z,
+                    size: 1.7+C.rand(seed+1)*.55,
+                    seed,
+                    color: j%2 ? "#687c43" : "#587547",
+                    shrub: true,
+                })
+            }
+        }
         trees.set(i, list)
         return list
     }

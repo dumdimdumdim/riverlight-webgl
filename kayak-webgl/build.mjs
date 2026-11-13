@@ -1,5 +1,6 @@
 import { build } from "esbuild"
-import { copyFile, mkdir } from "node:fs/promises"
+import { createHash } from "node:crypto"
+import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises"
 import { fileURLToPath } from "node:url"
 
 const here = name => fileURLToPath(new URL(name, import.meta.url))
@@ -12,4 +13,11 @@ await build({
     target: "es2020",
     legalComments: "none",
 })
-await Promise.all(["index.html", "style.css"].map(file => copyFile(here(file), here("dist/" + file))))
+await copyFile(here("style.css"), here("dist/style.css"))
+let html = await readFile(here("index.html"), "utf8")
+for (const asset of ["style.css", "game.js"]) {
+    const contents = await readFile(here("dist/" + asset))
+    const hash = createHash("sha256").update(contents).digest("hex").slice(0, 12)
+    html = html.replace(`"./${asset}"`, `"./${asset}?v=${hash}"`)
+}
+await writeFile(here("dist/index.html"), html)
