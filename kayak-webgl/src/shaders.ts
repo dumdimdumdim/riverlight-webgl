@@ -115,12 +115,16 @@ void main(){
     }
     if (world.y<0.) discard;
     float dist=length(world.xz-eye.xz);
-    if (material==1) {
+    if (material==1 || material==7) {
         vec2 p=world.xz;
         float groundTone=noise(p*.34)*.7+noise(p*2.3)*.3;
         float flecks=noise(p*15.)-.5;
         col*=.69+groundTone*.45+flecks*.13;
         col=mix(col,vec3(.62,.54,.29),smoothstep(.66,.98,groundTone)*.24);
+        if (material==7) {
+            float damp=1.-smoothstep(.014,.10,world.y+(groundTone-.5)*.055);
+            col=mix(col,col*vec3(.57,.64,.57),damp*.76);
+        }
     } else if (material==0) {
         vec3 n=cross(dFdx(world),dFdy(world));
         n*=inversesqrt(max(dot(n,n),1e-16));
@@ -180,7 +184,7 @@ void main(){
         if(abs(offset.y)>2.) continue;
         float a=atan(offset.y,offset.x);
         float r=1.+.1*sin(a*3.+phases[i])+.05*cos(a*5.-phases[i]);
-        edge=min(edge,(length(offset)-r)*o.z);
+        edge=min(edge,(length(offset)-r)*min(o.z,o.w));
     }
     // Low frequency drift bends each family of waves by a different amount.
     vec2 flow=vec2(noise(p*.24+vec2(6.,-time*.026)),noise(p*.31+vec2(-3.,time*.041)))-.5;
@@ -194,23 +198,30 @@ void main(){
         + vec2(-.025,.056)*cos(b)*(.8-flow.x*.42);
     wave*=distanceCalm;
     wave+=vec2(.013,.041)*cos(c)*wind*detail;
+    wave*=mix(.46,1.,smoothstep(0.,1.5,edge));
     vec3 n = normalize(vec3(wave.x,1.,wave.y));
     vec3 ray = reflect(-view,n);
     float fresnel = pow(1.-max(0.,dot(n,view)),3.5);
-    vec3 blue = vec3(.076,.38,.40), pale = vec3(.43,.65,.43);
+    vec3 blue = vec3(.076,.38,.40);
     float grain = noise(p*vec2(.42,1.2)+flow+vec2(.0,-time*.09))-.5;
-    vec3 pigment = mix(pale,blue,smoothstep(-.18,3.6,edge+(noise(p*1.6)-.5)*.34));
+    float shallows=1.-smoothstep(.02,1.85,edge+(noise(p*.85)-.5)*.48);
+    float bedTone=noise((p+wave*2.)*vec2(2.5,3.6));
+    vec3 riverbed=mix(vec3(.29,.37,.27),vec3(.57,.52,.33),bedTone);
+    vec3 pigment=mix(blue,riverbed,shallows*.83);
     pigment += grain*vec3(.027,.040,.033);
     vec3 env = sky(ray);
     vec2 st = gl_FragCoord.xy/resolution;
     vec2 stretch = wave * vec2(.11,.071) * (.62 + .38*detail);
     vec4 refl = texture(reflection, clamp(st+stretch,0.,1.));
     env = mix(env, refl.rgb/max(refl.a,.01)*vec3(.83,.92,.87), refl.a*.84);
-    vec3 water = mix(pigment, env, .15 + fresnel*.55);
+    vec3 water = mix(pigment, env, (.15 + fresnel*.55)*(1.-shallows*.33));
     float glint = max(dot(ray,sun),0.);
     water += vec3(1.,.74,.40)*(pow(glint,110.)*.22+pow(glint,27.)*.095);
-    float foam = (1.-smoothstep(.017,.17,abs(edge-.10+.045*sin(p.y*6.-time))))*.23;
-    water = mix(water,vec3(.88,.91,.69),foam);
+    float lap=.13+.047*sin(time*1.28+bedTone*4.+p.y*.8);
+    float lapWidth=max(.045,fwidth(edge));
+    float foam=(1.-smoothstep(0.,lapWidth,abs(edge-lap))) *
+        smoothstep(.47,.78,noise(p*.92+vec2(0.,-time*.16)))*.27;
+    water=mix(water,vec3(.83,.86,.70),foam);
     water = mix(water, vec3(.74,.76,.62), (1.-exp(-dist*.008))*.67);
     // Broken, thin capillary highlights appear in local patches of wind.
     float crest=sin(dot(p,vec2(-1.8,14.2))+flow.y*9.+noise(p*1.83)*2.8-time*1.4);

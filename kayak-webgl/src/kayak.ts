@@ -56,6 +56,26 @@ const deckLine = [-1,1].map(side => tubeSurface(u => {
     return point(x,deckHeight(z,x)-.007,z)
 }, u => .006*Math.sin(u*Math.PI)**.4,42,5))
 
+const cargoStations = [-1.53,-1.25,-.95].map(z =>
+    [-1,1].map(side => {
+        const x = side*profile(z).width*.73
+        return point(x,deckHeight(z,x),z)
+    })
+)
+const cargoMounts = cargoStations.flat().flatMap(anchor =>
+    oval(anchor,point(.030,.023,.039),8,14)
+)
+const cargoCords = cargoStations.slice(1).flatMap((station,i) =>
+    station.flatMap((end,side) => {
+        const start = cargoStations[i][1-side]
+        return tubeSurface(u => {
+            const p = interpolate(start,end,u)
+            const lift = .020*Math.sin(Math.PI*u)
+            return point(p.x,Math.max(p.y,deckHeight(p.z,p.x))+.015+lift,p.z)
+        }, () => .012,14,8)
+    })
+)
+
 const vest = oval(point(0,.424,-.36),point(.151,.217,.106),18,32)
 const shirt = oval(point(0,.546,-.359),point(.171,.102,.098),15,32)
 const neck = oval(point(0,.638,-.322),point(.052,.085,.05),12,20)
@@ -128,6 +148,8 @@ export function drawKayak(gpu: RiverRenderer, trip: Trip) {
     draw(seat,"#594636")
     draw(rim,"#704229",LACQUER)
     for (const line of deckLine) draw(line,"#f3d583",LACQUER)
+    draw(cargoMounts,"#514738")
+    draw(cargoCords,"#302e27")
 
     const pp = C.paddle(trip)
     const effort = trip.stroke ? Math.sin(Math.PI*pp.u)**2 : 0

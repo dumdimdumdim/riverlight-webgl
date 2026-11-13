@@ -67,11 +67,12 @@ class Mesh {
         f[i++] = u; f[i++] = v; f[i++] = z; f[i++] = material
         this.size = i
     }
-    polygon(p: Point[], color: Color, alpha: number, material = 0) {
+    polygon(p: Point[], color: Color, alpha: number | number[], material = 0) {
+        const opacity = (index: number) => typeof alpha === "number" ? alpha : alpha[index]
         for (let i = 2; i < p.length; i++) {
-            this.point(p[0], color, alpha, 0, 0, 0, material)
-            this.point(p[i - 1], color, alpha, 0, 0, 0, material)
-            this.point(p[i], color, alpha, 0, 0, 0, material)
+            this.point(p[0], color, opacity(0), 0, 0, 0, material)
+            this.point(p[i - 1], color, opacity(i - 1), 0, 0, 0, material)
+            this.point(p[i], color, opacity(i), 0, 0, 0, material)
         }
     }
     smooth(triangles: SmoothTriangle[], color: Color, material: number, transform: (p: Point) => Point, rotate: (p: Point) => Point) {
@@ -175,8 +176,8 @@ export class RiverRenderer {
     face(p: Point[], color: string, alpha: number, material: number) {
         this.solid.polygon(p, this.color(color), alpha, material)
     }
-    decal(p: Point[], color: string, alpha: number) {
-        if (alpha > 0) this.decals.polygon(p, this.color(color), alpha)
+    decal(p: Point[], color: string, alpha: number | number[]) {
+        if (typeof alpha !== "number" || alpha > 0) this.decals.polygon(p, this.color(color), alpha)
     }
     smooth(triangles: SmoothTriangle[], color: string, material: number, transform: (p: Point) => Point, rotate: (p: Point) => Point) {
         this.boat.smooth(triangles, this.color(color), material, transform, rotate)

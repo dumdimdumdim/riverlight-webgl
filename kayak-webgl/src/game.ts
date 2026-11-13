@@ -371,18 +371,22 @@ export function mountRiverlight(root: HTMLElement) {
         }
         return cover
     }
+    function shoreWidth(z: number) {
+        return C.half(z) + .19*Math.sin(z*.63) + .09*Math.sin(z*1.47)
+    }
     function terrain() {
         const start = Math.floor((cam.z + 2) / 2) * 2,
             end = Math.ceil((s.z + 650) / 8) * 8
         for (let z = start; z < end; ) {
             const zz = z + (z < Math.floor((s.z + 96) / 16) * 16 ? 2 : 8)
             for (const side of [-1, 1]) {
-                const edge = (t: number) => C.center(t) + side * C.half(t),
+                const edge = (t: number) => C.center(t) + side * shoreWidth(t),
                     e = edge(z),
                     ee = edge(zz),
-                    sw = C.sand(z) * 0.48,
-                    sww = C.sand(zz) * 0.48,
+                    sw = C.sand(z) * (.50 + .14*Math.sin(z*.32 + side)),
+                    sww = C.sand(zz) * (.50 + .14*Math.sin(zz*.32 + side)),
                     p = (x: number, y: number, z: number) => ({ x, y, z })
+                material = 7
                 face(
                     [
                         p(e, 0, z),
@@ -396,6 +400,7 @@ export function mountRiverlight(root: HTMLElement) {
                         reedBankCover((z + zz) * 0.5, side)
                     )
                 )
+                material = 1
                 face(
                     [
                         p(e + side * sw, 0.14, z),
@@ -426,6 +431,7 @@ export function mountRiverlight(root: HTMLElement) {
                     })
                 }
             }
+            material = 7
             for (let i = 0; i < 40; i++) {
                 const k = (i + 1) % 40
                 face(
@@ -457,6 +463,7 @@ export function mountRiverlight(root: HTMLElement) {
                     )
                 )
             }
+            material = 1
             const middle = { x: o.x, y: 0.18, z: o.z }
             for (let i = 0; i < 40; i++)
                 face([middle, rings[1][i], rings[1][(i + 1) % 40]], colors.land)
@@ -1212,39 +1219,31 @@ export function mountRiverlight(root: HTMLElement) {
     }
     function wake() {
         const a = s.wake
+        const wakePoint = (v: Wake, across: number) => {
+            const width = (0.39 + v.age*(.060 + .08*v.effort)) *
+                (1 + .085*Math.sin(v.z*3.1) + .045*Math.sin(v.z*7.3))
+            const sternOffset = .65
+            return {
+                x: v.x + across*Math.cos(v.heading)*width - sternOffset*Math.sin(v.heading),
+                y: .008,
+                z: v.z - across*Math.sin(v.heading)*width - sternOffset*Math.cos(v.heading),
+            }
+        }
+        const strength = (v: Wake) => (1-v.age/7)**2 * (.057+.16*v.effort)
+        const wakeProfile = [-1,-.72,0,.72,1]
+        const opacity = [0,1,.40,1,0]
         for (let i = 1; i < a.length; i++) {
-            const p = a[i - 1],
-                q = a[i]
-            if (Math.hypot(p.x - q.x, p.z - q.z) < 0.001) continue
-            const expand = (v: Wake) =>
-                    0.39 + v.age * (0.055 + 0.08 * v.effort),
-                edge = (v: Wake, side: number) => {
-                    const width =
-                        expand(v) *
-                        (1 +
-                            0.085 * Math.sin(v.z * 3.1) +
-                            0.045 * Math.sin(v.z * 7.3))
-                    return {
-                        x: v.x + side * Math.cos(v.heading) * width,
-                        y: 0.008,
-                        z: v.z - side * Math.sin(v.heading) * width,
-                    }
-                }
-            const alpha = (1 - q.age / 7) ** 2 * (0.035 + 0.075 * q.effort)
+            const p = a[i-1], q = a[i]
+            if (Math.hypot(p.x-q.x,p.z-q.z) < .001) continue
             if (C.depth(p.x, p.z) < 0.1 || C.depth(q.x, q.z) < 0.1) continue
-            poly(
-                [edge(p, -1), edge(q, -1), edge(q, 1), edge(p, 1)],
-                colors.paper,
-                alpha
-            )
-            if (i % 3 === 0) {
-                line3(
-                    [edge(p, -1), edge(q, -1)],
+            const pStrength = strength(p), qStrength = strength(q)
+            for (let j = 1; j < wakeProfile.length; j++) {
+                const left = wakeProfile[j-1], right = wakeProfile[j]
+                gpu.decal(
+                    [wakePoint(p,left),wakePoint(q,left),wakePoint(q,right),wakePoint(p,right)],
                     colors.paper,
-                    0.65,
-                    alpha * 0.5
+                    [pStrength*opacity[j-1],qStrength*opacity[j-1],qStrength*opacity[j],pStrength*opacity[j]],
                 )
-                line3([edge(p, 1), edge(q, 1)], colors.paper, 0.65, alpha * 0.5)
             }
         }
         for (const p of s.ripples) {
@@ -1325,7 +1324,7 @@ export function mountRiverlight(root: HTMLElement) {
         const end = Math.ceil((s.z + 650) / 8) * 8
         for (let z = start; z < end;) {
             const zz = z + (z < transition ? 2 : 8)
-            gpu.water(z, zz, C.center(z), C.center(zz), C.half(z), C.half(zz))
+            gpu.water(z, zz, C.center(z), C.center(zz), shoreWidth(z), shoreWidth(zz))
             z = zz
         }
         gpu.draw(cam, w, h, Math.min(w, h) * FOCAL_RATIO, pitch, visualTime, C.islands(s.z + 110, 170))
