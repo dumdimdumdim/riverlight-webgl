@@ -343,19 +343,19 @@ export function mountRiverlight(root: HTMLElement) {
     ) {
         tube([a, b], [r, r], col, transform || ((p: Point) => p), 6)
     }
-    function islandReedSides(id: number): number[] {
-        // Each four-island stretch includes all layouts, without random repeats.
-        const block = Math.floor(id / 4),
-            shift =
-                block === 0 ? 0 : Math.floor(C.rand(block * 241 + 9137) * 4),
-            layout = ((((id % 4) + 4) % 4) + shift) % 4
-        return layout === 0
-            ? [-1]
-            : layout === 1
-              ? [1]
-              : layout === 2
-                ? [-1, 1]
-                : []
+    function islandReedPatches(id: number) {
+        const seed = id*173+8311
+        const count = 2+Math.floor(C.rand(seed+9)*3)
+        const rotation = C.rand(seed+10)*C.TAU
+        return Array.from({ length: count }, (_, i) => {
+            const patch = seed+i*59
+            return {
+                seed: patch,
+                angle: rotation + (i+(C.rand(patch+4)-.5)*.68)*C.TAU/count,
+                span: .22+C.rand(patch+11)*.47,
+                width: .52+C.rand(patch+14)*.60,
+            }
+        })
     }
     function reedBankCover(z: number, side: number) {
         let cover = 0
@@ -431,6 +431,7 @@ export function mountRiverlight(root: HTMLElement) {
                     })
                 }
             }
+            const patches = islandReedPatches(o.i)
             material = 7
             for (let i = 0; i < 40; i++) {
                 const k = (i + 1) % 40
@@ -442,20 +443,9 @@ export function mountRiverlight(root: HTMLElement) {
                         (() => {
                             const angle = ((i + 0.5) / 40) * C.TAU
                             let cover = 0
-                            for (const side of islandReedSides(o.i)) {
-                                const centre = side > 0 ? 0 : Math.PI,
-                                    delta = Math.atan2(
-                                        Math.sin(angle - centre),
-                                        Math.cos(angle - centre)
-                                    ),
-                                    t = C.clamp(
-                                        (Math.PI * 0.5 +
-                                            0.12 -
-                                            Math.abs(delta)) /
-                                            0.25,
-                                        0,
-                                        1
-                                    )
+                            for (const patch of patches) {
+                                const delta = Math.abs(C.angleDelta(angle,patch.angle))
+                                const t = C.clamp((patch.span+.16-delta)/.32,0,1)
                                 cover = Math.max(cover, t * t * (3 - 2 * t))
                             }
                             return cover
@@ -805,20 +795,21 @@ export function mountRiverlight(root: HTMLElement) {
             offset = across * width * fringe
         if (o.islandI !== undefined) {
             const island = C.island(o.islandI),
-                angle = (o.angleCentre ?? 0) + along * Math.PI * 0.5,
+                angle = (o.angleCentre ?? 0) + along * (o.angleSpan ?? 0),
                 r = C.radius(island, angle),
                 x = island.x + Math.cos(angle) * (island.rx * r + offset),
                 z = island.z + Math.sin(angle) * (island.rz * r + offset)
-            return { x, y: offset < -0.1 ? 0.18 : 0.025, z }
+            return { x, y: Math.max(.023,.18*C.clamp(-offset/.55,0,1)+.012), z }
         }
         const z = o.z + along * length * 0.5,
             side = o.side ?? (Math.sign(o.x - C.center(o.z)) || 1),
             x = C.center(z) + side * (C.half(z) - 0.15 + offset)
         return { x, y: offset > 0.2 ? 0.22 : 0.025, z }
     }
-    function addHabitat(o: Habitat) {
+    function addHabitat(o: Habitat, withBirds = true) {
         if (habitats.has(o.key)) return
         habitats.set(o.key, o)
+        if (!withBirds) return
         const big = C.rand(o.seed + 31) < 0.42,
             count = 2 + Math.floor(C.rand(o.seed + 41) * 3)
         for (let j = 0; j < count + (big ? 1 : 0); j++) {
@@ -879,21 +870,25 @@ export function mountRiverlight(root: HTMLElement) {
         }
         for (const island of C.islands(s.z + 45, 110)) {
             if (island.z < s.z - 35) continue
-            for (const side of islandReedSides(island.i)) {
+            const patches = islandReedPatches(island.i)
+            for (const [i, patch] of patches.entries()) {
+                const radius = C.radius(island,patch.angle)
+                const tangentRadius = Math.hypot(
+                    island.rx*Math.sin(patch.angle), island.rz*Math.cos(patch.angle),
+                )
                 addHabitat({
-                    key: "island-reeds:" + island.i + ":" + side,
-                    x: island.x + side * island.rx * 0.86,
-                    y: 0.12,
-                    z: island.z,
-                    seed: island.i * 173 + side * 59 + 8311,
+                    key: "island-reeds:" + island.i + ":" + i,
+                    x: island.x + Math.cos(patch.angle)*island.rx*radius,
+                    y: .025,
+                    z: island.z + Math.sin(patch.angle)*island.rz*radius,
+                    seed: patch.seed,
                     kind: "reeds",
                     islandI: island.i,
-                    angleCentre: side > 0 ? 0 : Math.PI,
-                    width: 1.15,
-                    length:
-                        Math.PI *
-                        Math.sqrt((island.rx ** 2 + island.rz ** 2) / 2),
-                })
+                    angleCentre: patch.angle,
+                    angleSpan: patch.span,
+                    width: patch.width,
+                    length: 2*patch.span*tangentRadius,
+                }, i === 0)
             }
             addHabitat({
                 key: "island-tree:" + island.i,
@@ -985,22 +980,20 @@ export function mountRiverlight(root: HTMLElement) {
             roots = []
             reedRoots.set(o.key, roots)
         }
-        const count = Math.round(
-            (o.length ?? 10) * (C.rand(o.seed + 7521) < 0.38 ? 28 : 16)
-        )
+        const islandPatch = o.islandI !== undefined
+        const waterBed = !islandPatch && C.rand(o.seed+7521) < .38
+        const count = Math.round((o.length ?? 10)*(islandPatch ? 22 : waterBed ? 24 : 15))
         for (let j = 0; j < count; j++) {
             const seed = o.seed + j * 53,
                 along = C.rand(seed + 1) * 2 - 1,
                 // Most roots are in the dense core; a few form the ragged fringe.
                 raw = C.rand(seed + 2) * 2 - 1,
-                waterBed = C.rand(o.seed + 7521) < 0.38,
                 // A broad, dense tongue joins the shore bed to navigable water.
                 // The majority of stems in these beds occupy the tongue itself.
                 reaching = waterBed && j % 4 !== 0,
                 tongue = Math.exp(-(((along - 0.12) / 0.58) ** 4)),
                 across = reaching
-                    ? (o.islandI !== undefined ? 1 : -1) *
-                      C.rand(seed + 12) *
+                    ? -C.rand(seed + 12) *
                       (0.5 + 3.5 * tongue)
                     : j % 4
                       ? raw * 0.48
@@ -1018,88 +1011,46 @@ export function mountRiverlight(root: HTMLElement) {
                 continue
             const fade = 1 - C.clamp((base.d - 110) / 35, 0, 1),
                 edge = Math.min(1, Math.abs(across)),
-                height =
-                    (1.05 + (C.rand(seed + 3) - 0.5) * 0.35) *
-                    (1 - edge * 0.18),
-                // Spatially coherent wind, with small local variation.
-                sway = Math.sin(s.time * 0.7 + root.z * 0.13) * 0.075,
-                lean = 0.09 + sway + (C.rand(seed + 4) - 0.5) * 0.08,
-                dry = C.rand(seed + 5) < 0.23,
-                col = dry ? "#b6a16b" : j % 3 ? "#7f9358" : "#99a266",
-                bend = bendReed(root, o.key + ":" + j),
-                flatten = Math.min(0.28, Math.hypot(bend.x, bend.z) * 0.32),
+                height = (.52 + C.rand(seed+3)*.80)*(1-edge*.31),
+                azimuth = C.rand(seed+8)*C.TAU,
+                sway = Math.sin(s.time*.7+root.z*.13)*.075,
+                lean = .05+C.rand(seed+4)*.18,
+                dry = C.rand(seed+5) < .23,
+                col = dry ? "#ad9b67" : j%3 ? "#71884c" : "#8f9d59",
+                bend = bendReed(root,o.key+":"+j),
+                flatten = Math.min(.28,Math.hypot(bend.x,bend.z)*.32),
                 at = (t: number): Point => ({
-                    x: root.x + (lean + bend.x) * t * t,
-                    y: root.y + height * t - flatten * t * t,
-                    z: root.z + (0.055 + bend.z) * t * t,
+                    x: root.x+(Math.cos(azimuth)*lean+sway+bend.x)*t*t,
+                    y: root.y+height*t-flatten*t*t,
+                    z: root.z+(Math.sin(azimuth)*lean+bend.z)*t*t,
                 }),
-                middle = at(0.6),
-                tip = at(1),
-                stemWidth = 0.014
-            face(
-                [
-                    { x: root.x - stemWidth, y: root.y, z: root.z },
-                    { x: middle.x - stemWidth, y: middle.y, z: middle.z },
-                    tip,
-                    { x: middle.x + stemWidth, y: middle.y, z: middle.z },
-                    { x: root.x + stemWidth, y: root.y, z: root.z },
-                ],
-                col,
-                fade
-            )
-            const leaves = pixel < 7 ? 1 : 3
-            for (let k = 0; k < leaves; k++) {
-                const t = 0.3 + k * 0.2,
-                    start = at(t),
-                    side = (j + k) % 2 ? 1 : -1,
-                    length = 0.25 + C.rand(seed + k + 21) * 0.15
-                face(
-                    [
-                        start,
-                        {
-                            x: start.x + side * length * 0.6,
-                            y: start.y + 0.13,
-                            z: start.z + 0.025,
-                        },
-                        {
-                            x: start.x + side * length,
-                            y: start.y + 0.015,
-                            z: start.z + 0.07,
-                        },
-                        {
-                            x: start.x + side * length * 0.5,
-                            y: start.y + 0.075,
-                            z: start.z + 0.055,
-                        },
-                    ],
-                    col,
-                    fade
-                )
+                middle = at(.62),
+                tip = at(1)
+            // Three faces give the stalk depth from both the camera and the water.
+            const stemRing = (p: Point, width: number) => Array.from({length: 3}, (_, i) => {
+                const angle = azimuth+i*C.TAU/3
+                return {x:p.x+Math.cos(angle)*width,y:p.y,z:p.z+Math.sin(angle)*width}
+            })
+            const foot = stemRing(root,.017), waist = stemRing(middle,.010)
+            for (let i = 0; i < 3; i++) {
+                const j = (i+1)%3
+                face([foot[i],foot[j],waist[j],waist[i]],col,fade)
+                face([waist[i],waist[j],tip],col,fade)
             }
-            // Fine branching panicles, not solid reedmace cylinders.
-            if (j % 4 === 0 && pixel > 5)
-                for (let k = 0; k < 3; k++) {
-                    const start = at(0.84 + k * 0.055),
-                        spread = 0.095 * (1 - k * 0.24)
-                    for (const side of [-1, 1])
-                        face(
-                            [
-                                start,
-                                {
-                                    x: start.x + side * spread,
-                                    y: start.y + 0.07,
-                                    z: start.z + 0.02,
-                                },
-                                {
-                                    x: start.x + side * spread * 0.5,
-                                    y: start.y + 0.09,
-                                    z: start.z + 0.015,
-                                },
-                            ],
-                            "#ad9773",
-                            fade * 0.8
-                        )
-                }
+            for (let k = 0; k < 3; k++) {
+                const start = at(.25+k*.22)
+                const angle = azimuth+k*2.4+(C.rand(seed+k+21)-.5)
+                const dx = Math.cos(angle), dz = Math.sin(angle)
+                const length = (.23+C.rand(seed+k+28)*.27)*(1-k*.12)
+                const width = .034+C.rand(seed+k+36)*.021
+                const centre = {x:start.x+dx*length*.48,y:start.y+length*.48,z:start.z+dz*length*.48}
+                const left = {x:centre.x-dz*width,y:centre.y-.026,z:centre.z+dx*width}
+                const right = {x:centre.x+dz*width,y:centre.y-.026,z:centre.z-dx*width}
+                const end = {x:start.x+dx*length,y:start.y+length*.20,z:start.z+dz*length}
+                face([start,left,end,centre],col,fade)
+                face([start,centre,end,right],mix(col,colors.shade,.22),fade)
+            }
+
         }
     }
     function drawBird(o: RiverBird) {

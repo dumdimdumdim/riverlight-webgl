@@ -37,6 +37,7 @@ export type Habitat = {
     width?: number
     islandI?: number
     angleCentre?: number
+    angleSpan?: number
 }
 export type RiverBird = {
     key: string

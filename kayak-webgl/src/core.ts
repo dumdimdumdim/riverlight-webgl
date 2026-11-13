@@ -28,8 +28,9 @@ export const KayakCore = (() => {
             15 + 1.6 * Math.sin(z / 83 + 2) + 0.8 * Math.sin(z / 41),
         sand = (z: number) =>
             1.3 + 0.45 * Math.sin(z / 21) + 0.3 * Math.sin(z / 47)
+    const islandStart = 122, islandSpacing = 275, islandJitter = 35
     function island(i: number): Island {
-        const z = 110 + i * 230 + rand(i + 87) * 35
+        const z = islandStart + i * islandSpacing + rand(i + 87) * islandJitter
         return {
             i,
             z,
@@ -42,8 +43,8 @@ export const KayakCore = (() => {
     function islands(z: number, range = 100): Island[] {
         const a = []
         for (
-            let i = Math.floor((z - range - 145) / 230);
-            i <= Math.ceil((z + range - 110) / 230);
+            let i = Math.floor((z - range - islandStart - islandJitter) / islandSpacing);
+            i <= Math.ceil((z + range - islandStart) / islandSpacing);
             i++
         ) {
             const o = island(i)

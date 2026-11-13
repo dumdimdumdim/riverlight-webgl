@@ -148,8 +148,8 @@ export function drawKayak(gpu: RiverRenderer, trip: Trip) {
     draw(seat,"#594636")
     draw(rim,"#704229",LACQUER)
     for (const line of deckLine) draw(line,"#f3d583",LACQUER)
-    draw(cargoMounts,"#514738")
-    draw(cargoCords,"#302e27")
+    draw(cargoMounts,"#9e7946")
+    draw(cargoCords,"#927247")
 
     const pp = C.paddle(trip)
     const effort = trip.stroke ? Math.sin(Math.PI*pp.u)**2 : 0
