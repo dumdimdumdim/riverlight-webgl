@@ -19,4 +19,4 @@ Use **← / →**, the on-screen paddle buttons, or tap either side of the water
 - `src/renderer.ts` batches geometry, renders a smaller mirrored scene for reflections, and renders the main scene with depth testing.
 - `src/shaders.ts` defines the animated water, sky, light, and distance fog. Add `?debug` to inspect the running game with `window.riverlight.snapshot()`.
 
-The trees retain their procedural illustrations as textures. Water, terrain, kayak, paddler, reeds, and wildlife are drawn by WebGL. Reduced motion freezes the decorative water animation while keeping paddling playable.
+Trees use instanced procedural models. The kayak and paddler use curved surfaces with interpolated lighting. Reduced motion freezes the decorative water animation while keeping paddling playable.

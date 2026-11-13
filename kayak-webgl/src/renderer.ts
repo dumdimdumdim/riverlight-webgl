@@ -1,8 +1,9 @@
 import type { Island, Point, Tree } from "./types"
+import type { SmoothTriangle } from "./surface"
+import { buildTree } from "./trees"
 import * as shader from "./shaders"
 
 const STRIDE = 11
-const TREE_LAYERS = 36 // Four palettes × three silhouettes × three variants.
 type Color = [number, number, number]
 type Program = { id: WebGLProgram; uniform: (name: string) => WebGLUniformLocation | null }
 
@@ -53,7 +54,7 @@ class Mesh {
         gl.bindVertexArray(null)
     }
     clear() { this.size = 0 }
-    point(p: Point, color: Color, a: number, u = 0, v = 0, layer = 0) {
+    point(p: Point, color: Color, a: number, u = 0, v = 0, z = 0, material = 0) {
         if (this.size + STRIDE > this.floats.length) {
             const larger = new Float32Array(this.floats.length * 2)
             larger.set(this.floats)
@@ -63,21 +64,41 @@ class Mesh {
         let i = this.size
         f[i++] = p.x; f[i++] = p.y; f[i++] = p.z
         f[i++] = color[0]; f[i++] = color[1]; f[i++] = color[2]; f[i++] = a
-        f[i++] = u; f[i++] = v; f[i++] = layer; f[i++] = 0
+        f[i++] = u; f[i++] = v; f[i++] = z; f[i++] = material
         this.size = i
     }
     polygon(p: Point[], color: Color, alpha: number, material = 0) {
         for (let i = 2; i < p.length; i++) {
-            this.point(p[0], color, alpha, material)
-            this.point(p[i - 1], color, alpha, material)
-            this.point(p[i], color, alpha, material)
+            this.point(p[0], color, alpha, 0, 0, 0, material)
+            this.point(p[i - 1], color, alpha, 0, 0, 0, material)
+            this.point(p[i], color, alpha, 0, 0, 0, material)
         }
     }
-    upload() {
+    smooth(triangles: SmoothTriangle[], color: Color, material: number, transform: (p: Point) => Point, rotate: (p: Point) => Point) {
+        for (const triangle of triangles) {
+            for (const vertex of triangle) {
+                const n = rotate(vertex.normal)
+                this.point(transform(vertex.position), color, 1, n.x, n.y, n.z, material)
+            }
+        }
+    }
+    upload(usage: number = this.gl.STREAM_DRAW) {
         if (!this.size) return
         const gl = this.gl
         gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer)
-        gl.bufferData(gl.ARRAY_BUFFER, this.floats.subarray(0, this.size), gl.STREAM_DRAW)
+        gl.bufferData(gl.ARRAY_BUFFER, this.floats.subarray(0, this.size), usage)
+    }
+    drawInstances(instances: Float32Array, count: number, buffer: WebGLBuffer) {
+        const gl = this.gl
+        gl.bindVertexArray(this.vao)
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer)
+        gl.bufferData(gl.ARRAY_BUFFER, instances.subarray(0, count*12), gl.STREAM_DRAW)
+        for (let i = 0; i < 3; i++) {
+            gl.enableVertexAttribArray(3+i)
+            gl.vertexAttribPointer(3+i, 4, gl.FLOAT, false, 48, i*16)
+            gl.vertexAttribDivisor(3+i, 1)
+        }
+        gl.drawArraysInstanced(gl.TRIANGLES, 0, this.size / STRIDE, count)
     }
     draw() {
         if (!this.size) return
@@ -93,7 +114,9 @@ class Mesh {
 export class RiverRenderer {
     private gl: WebGL2RenderingContext
     private solid: Mesh
-    private foliage: Mesh
+    private treeMeshes = new Map<number, { mesh: Mesh; data: Float32Array; count: number }>()
+    private treeInstances: WebGLBuffer
+    private boat: Mesh
     private decals: Mesh
     private river: Mesh
     private scene: Program
@@ -102,8 +125,6 @@ export class RiverRenderer {
     private reflection: WebGLFramebuffer
     private reflectedColor: WebGLTexture
     private reflectedDepth: WebGLRenderbuffer
-    private canopy: WebGLTexture
-    private layers = new Map<HTMLCanvasElement, number>()
     private colors = new Map<string, Color>()
     private reflectionWidth = 0
     private reflectionHeight = 0
@@ -119,20 +140,13 @@ export class RiverRenderer {
         this.waterShader = compile(gl, shader.meshVertex, shader.waterFragment)
         this.background = compile(gl, shader.backgroundVertex, shader.backgroundFragment)
         this.solid = new Mesh(gl)
-        this.foliage = new Mesh(gl)
+        this.boat = new Mesh(gl)
+        this.treeInstances = gl.createBuffer()!
         this.decals = new Mesh(gl)
         this.river = new Mesh(gl)
         this.reflection = gl.createFramebuffer()!
         this.reflectedColor = gl.createTexture()!
         this.reflectedDepth = gl.createRenderbuffer()!
-        this.canopy = gl.createTexture()!
-        gl.activeTexture(gl.TEXTURE0)
-        gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.canopy)
-        gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.RGBA8, 192, 320, TREE_LAYERS)
-        gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
-        gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
-        gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
-        gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
         gl.activeTexture(gl.TEXTURE1)
         gl.bindTexture(gl.TEXTURE_2D, this.reflectedColor)
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
@@ -152,7 +166,8 @@ export class RiverRenderer {
     }
     begin() {
         this.solid.clear()
-        this.foliage.clear()
+        this.boat.clear()
+        for (const batch of this.treeMeshes.values()) batch.count = 0
         this.decals.clear()
         this.river.clear()
     }
@@ -162,24 +177,30 @@ export class RiverRenderer {
     decal(p: Point[], color: string, alpha: number) {
         if (alpha > 0) this.decals.polygon(p, this.color(color), alpha)
     }
-    tree(sprite: HTMLCanvasElement, o: Tree, fade: number) {
-        let layer = this.layers.get(sprite)
-        if (layer === undefined) {
-            layer = this.layers.size
-            if (layer >= TREE_LAYERS) throw new Error("The canopy texture array is full.")
-            const gl = this.gl
-            gl.activeTexture(gl.TEXTURE0)
-            gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.canopy)
-            gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true)
-            gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, layer, 192, 320, 1, gl.RGBA, gl.UNSIGNED_BYTE, sprite)
-            gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false)
-            this.layers.set(sprite, layer)
+    smooth(triangles: SmoothTriangle[], color: string, material: number, transform: (p: Point) => Point, rotate: (p: Point) => Point) {
+        this.boat.smooth(triangles, this.color(color), material, transform, rotate)
+    }
+    tree(o: Tree, kind: number, variant: number, fade: number, nearby: boolean) {
+        const id = kind * 6 + variant * 2 + Number(nearby)
+        let batch = this.treeMeshes.get(id)
+        if (!batch) {
+            const mesh = new Mesh(this.gl)
+            const identity = (p: Point) => p
+            for (const part of buildTree(kind, variant, nearby))
+                mesh.smooth(part.triangles, [part.tone,part.tone,part.tone], part.wood ? 4 : 5, identity, identity)
+            mesh.upload(this.gl.STATIC_DRAW)
+            batch = { mesh, data: new Float32Array(32*12), count: 0 }
+            this.treeMeshes.set(id, batch)
         }
-        const x = o.size * .83, top = o.y + o.size * 2.6, rgb = RiverRenderer.white
-        const a = { x: o.x-x, y: o.y, z: o.z }, b = { x: o.x+x, y: o.y, z: o.z }
-        const c = { ...b, y: top }, d = { ...a, y: top }
-        this.foliage.point(a,rgb,fade,0,1,layer); this.foliage.point(b,rgb,fade,1,1,layer); this.foliage.point(c,rgb,fade,1,0,layer)
-        this.foliage.point(a,rgb,fade,0,1,layer); this.foliage.point(c,rgb,fade,1,0,layer); this.foliage.point(d,rgb,fade,0,0,layer)
+        const offset = batch.count++ * 12
+        if (offset >= batch.data.length) {
+            const larger = new Float32Array(batch.data.length*2)
+            larger.set(batch.data)
+            batch.data = larger
+        }
+        const angle = o.seed * 2.399963
+        batch.data.set([o.x,o.y,o.z,o.size, ...this.color(o.color),fade,
+            Math.cos(angle), Math.sin(angle), o.seed % 13, 0], offset)
     }
     water(z: number, zz: number, center: number, next: number, half: number, nextHalf: number) {
         const rgb = RiverRenderer.white
@@ -218,14 +239,16 @@ export class RiverRenderer {
         }
         const landscape = (mirror: number) => {
             use(this.scene, mirror)
-            gl.uniform1i(this.scene.uniform("canopy"),0)
             gl.uniform1i(this.scene.uniform("mode"),0)
             this.solid.draw()
+            this.boat.draw()
             gl.uniform1i(this.scene.uniform("mode"),1)
-            this.foliage.draw()
+            for (const batch of this.treeMeshes.values()) {
+                if (batch.count) batch.mesh.drawInstances(batch.data, batch.count, this.treeInstances)
+            }
         }
 
-        for (const mesh of [this.solid,this.foliage,this.river,this.decals]) mesh.upload()
+        for (const mesh of [this.solid,this.boat,this.river,this.decals]) mesh.upload()
         this.resizeReflection()
         gl.viewport(0,0,this.reflectionWidth,this.reflectionHeight)
         gl.clearColor(0,0,0,0)
@@ -268,12 +291,13 @@ export class RiverRenderer {
     }
     destroy() {
         const gl=this.gl
-        for(const mesh of [this.solid,this.foliage,this.decals,this.river]) mesh.destroy()
+        for(const mesh of [this.solid,this.boat,this.decals,this.river]) mesh.destroy()
         for(const program of [this.scene,this.background,this.waterShader]) gl.deleteProgram(program.id)
         gl.deleteFramebuffer(this.reflection)
         gl.deleteRenderbuffer(this.reflectedDepth)
         gl.deleteTexture(this.reflectedColor)
-        gl.deleteTexture(this.canopy)
-        this.layers.clear()
+        gl.deleteBuffer(this.treeInstances)
+        for (const batch of this.treeMeshes.values()) batch.mesh.destroy()
+        this.treeMeshes.clear()
     }
 }

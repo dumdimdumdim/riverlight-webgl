@@ -1,5 +1,6 @@
 import { KayakCore, deerLegPose } from "./core"
 import { RiverRenderer } from "./renderer"
+import { drawKayak } from "./kayak"
 import type { Projected, Point, Deer, Habitat, RiverBird, Tree, Transform, Wake } from "./types"
 
 const FOCAL_RATIO = 1.08
@@ -7,13 +8,6 @@ const CAMERA_TRAIL = 5.2
 
 const PALETTE = {
     shade: "#627968",
-    trunk: "#a1774d",
-    hullShade: "#b9923c",
-    seat: "#66553e",
-    vest: "#c06446",
-    skin: "#c48d5c",
-    shaft: "#9a764b",
-    blade: "#eed092",
     shadow: "#167d91",
     paper: "#faf7ee",
     distance: "#e9bd90",
@@ -23,7 +17,6 @@ const PALETTE = {
     leaf: "#99a35a",
     deepLeaf: "#557d59",
     rust: "#cd7550",
-    boat: "#f2c653",
 }
 
 export function mountRiverlight(root: HTMLElement) {
@@ -58,7 +51,6 @@ export function mountRiverlight(root: HTMLElement) {
         habitats = new Map<string, Habitat>(),
         birds = new Map<string, RiverBird>(),
         reedBends = new Map<string, { x: number; z: number; time: number }>(),
-        sprites = new Map<string, HTMLCanvasElement>(),
         lost = false,
         visualTime = 0,
         frames = 0
@@ -351,21 +343,6 @@ export function mountRiverlight(root: HTMLElement) {
     ) {
         tube([a, b], [r, r], col, transform || ((p: Point) => p), 6)
     }
-    function arm(a: Point, e: Point, b: Point, tr: (p: Point) => Point) {
-        const armPoints = [],
-            radii = []
-        for (let i = 0; i <= 12; i++) {
-            const t = i / 12,
-                u = 1 - t
-            armPoints.push({
-                x: u * u * a.x + 2 * u * t * e.x + t * t * b.x,
-                y: u * u * a.y + 2 * u * t * e.y + t * t * b.y,
-                z: u * u * a.z + 2 * u * t * e.z + t * t * b.z,
-            })
-            radii.push(C.lerp(0.061, 0.043, t))
-        }
-        tube(armPoints, radii, colors.skin, tr)
-    }
     function islandReedSides(id: number): number[] {
         // Each four-island stretch includes all layouts, without random repeats.
         const block = Math.floor(id / 4),
@@ -534,128 +511,6 @@ export function mountRiverlight(root: HTMLElement) {
         trees.set(i, list)
         return list
     }
-    // Small offscreen, deterministic pigment illustrations. No external assets or per-frame randomization.
-    function treeSprite(
-        kind: number,
-        col: string,
-        variant: number
-    ): HTMLCanvasElement {
-        const key = kind + col + variant
-        if (sprites.has(key)) return sprites.get(key)!
-        const c = document.createElement("canvas")
-        c.width = 192
-        c.height = 320
-        const g = c.getContext("2d")!,
-            seed = variant * 137 + kind * 641
-        g.fillStyle = colors.trunk
-        g.beginPath()
-        g.moveTo(92, 310)
-        g.lineTo(98, 310)
-        g.lineTo(102, 152)
-        g.lineTo(93, 169)
-        g.closePath()
-        g.fill()
-        const p = new Path2D()
-        if (kind === 0) {
-            p.moveTo(95, 13)
-            for (let tier = 0; tier < 5; tier++) {
-                const y = 65 + tier * 48,
-                    width = 21 + tier * 13
-                p.lineTo(95 + width + 4 * C.rand(seed + tier), y)
-                p.lineTo(95 + width * 0.63, y - 5)
-                p.lineTo(95 + width * 0.45, y + 19)
-            }
-            p.lineTo(111, 292)
-            p.lineTo(82, 292)
-            for (let tier = 4; tier >= 0; tier--) {
-                const y = 65 + tier * 48,
-                    width = 21 + tier * 13
-                p.lineTo(95 - width, y + 3)
-                p.lineTo(95 - width * 0.6, y - 7)
-                p.lineTo(95 - width * 0.37, y - 23)
-            }
-            p.closePath()
-        } else if (kind === 1) {
-            const points: Array<[number, number]> = []
-            for (let i = 0; i < 88; i++) {
-                const a = (i / 88) * C.TAU,
-                    rr =
-                        1 +
-                        0.065 * Math.sin(a * 5 + variant) +
-                        0.04 * Math.sin(a * 9 + variant)
-                points.push([
-                    96 + Math.cos(a) * 64 * rr,
-                    154 + Math.sin(a) * 125 * rr,
-                ])
-            }
-            p.moveTo(points[0][0], points[0][1])
-            for (let i = 1; i < points.length; i++) p.lineTo(...points[i])
-            p.closePath()
-        } else {
-            p.moveTo(91, 27)
-            p.bezierCurveTo(156, 9, 156, 63, 127, 88)
-            p.bezierCurveTo(173, 107, 167, 147, 125, 161)
-            p.bezierCurveTo(169, 187, 168, 228, 120, 240)
-            p.bezierCurveTo(154, 280, 125, 304, 87, 284)
-            p.bezierCurveTo(32, 284, 36, 241, 69, 222)
-            p.bezierCurveTo(23, 201, 26, 165, 68, 149)
-            p.bezierCurveTo(23, 125, 40, 91, 77, 82)
-            p.bezierCurveTo(40, 57, 58, 26, 91, 27)
-            p.closePath()
-        }
-        g.fillStyle = col
-        g.fill(p)
-        g.save()
-        g.clip(p)
-        for (let i = 0; i < 160; i++) {
-            g.globalAlpha = 0.018 + C.rand(seed + i + 900) * 0.02
-            g.fillStyle = i % 2 ? colors.paper : colors.shade
-            g.beginPath()
-            g.ellipse(
-                C.rand(seed + i * 9) * 192,
-                C.rand(seed + i * 13 + 2) * 320,
-                5 + C.rand(seed + i * 3) * 14,
-                4 + C.rand(seed + i * 7) * 16,
-                C.rand(seed + i) * 6,
-                0,
-                C.TAU
-            )
-            g.fill()
-        }
-        for (let i = 0; i < 6500; i++) {
-            g.globalAlpha = 0.055 + C.rand(seed + i + 16) * 0.2
-            g.fillStyle = i % 3 ? colors.paper : colors.shade
-            const x = C.rand(seed + i * 31) * 192,
-                y = C.rand(seed + i * 13 + 21) * 320
-            g.fillRect(
-                x,
-                y,
-                0.65 + C.rand(i + 7) * 1.35,
-                0.65 + C.rand(i + 8) * 1.6
-            )
-        }
-        g.restore()
-        g.globalAlpha = 1
-        const shaded = new Path2D()
-        if (kind === 0) {
-            shaded.moveTo(96, 30)
-            shaded.lineTo(91, 275)
-            shaded.lineTo(30, 283)
-            shaded.lineTo(59, 230)
-            shaded.lineTo(39, 239)
-            shaded.lineTo(67, 178)
-            shaded.lineTo(59, 188)
-            shaded.closePath()
-            g.save()
-            g.clip(p)
-            g.globalAlpha = 0.09
-            g.fillStyle = colors.shade
-            g.fill(shaded)
-            g.restore()
-        }
-        sprites.set(key, c)
-        return c
-    }
     function makeTree(o: Tree, fade: number) {
         if (fade <= 0) return
         const base = project({ x: o.x, y: o.y, z: o.z }),
@@ -672,13 +527,9 @@ export function mountRiverlight(root: HTMLElement) {
             top.y > h
         )
             return
-        const kind = Math.floor(C.rand(o.seed + 93) * 3),
-            sprite = treeSprite(
-                kind,
-                o.color,
-                Math.floor(C.rand(o.seed + 23) * 3)
-            )
-        gpu.tree(sprite, o, fade)
+        const kind = Math.floor(C.rand(o.seed + 93) * 3)
+        const variant = Math.floor(C.rand(o.seed + 23) * 3)
+        gpu.tree(o, kind, variant, fade, base.d < 54)
     }
     function vegetation() {
         const a = Math.floor((cam.z - 5) / 18),
@@ -1408,295 +1259,6 @@ export function mountRiverlight(root: HTMLElement) {
                 )
         }
     }
-    function boat() {
-        const tr = (p: Point) => C.local(s, p),
-            rings = [
-                [-1.9, 0.035, 0.16],
-                [-1.65, 0.17, 0.2],
-                [-1.3, 0.3, 0.25],
-                [-0.65, 0.4, 0.29],
-                [-0.3, 0.44, 0.31],
-                [0.1, 0.44, 0.31],
-                [0.45, 0.37, 0.29],
-                [1.1, 0.27, 0.25],
-                [1.5, 0.15, 0.2],
-                [1.8, 0.065, 0.16],
-                [1.95, 0, 0.14],
-            ],
-            leftR = [],
-            rightR = []
-        for (const row of rings) {
-            row[1] *= 0.81
-        }
-        for (const [z, r, y] of rings) {
-            leftR.push(tr({ x: -r, y, z }))
-            rightR.push(tr({ x: r, y, z }))
-        }
-        for (let i = 0; i < rings.length - 1; i++) {
-            if (i >= 3 && i <= 5) {
-                const za = rings[i][0],
-                    zb = rings[i + 1][0],
-                    ia =
-                        0.2349 *
-                        Math.sqrt(Math.max(0, 1 - ((za + 0.16) / 0.55) ** 2)),
-                    ib =
-                        0.2349 *
-                        Math.sqrt(Math.max(0, 1 - ((zb + 0.16) / 0.55) ** 2))
-                face(
-                    [
-                        leftR[i],
-                        leftR[i + 1],
-                        tr({ x: -ib, y: rings[i + 1][2], z: zb }),
-                        tr({ x: -ia, y: rings[i][2], z: za }),
-                    ],
-                    colors.boat
-                )
-                face(
-                    [
-                        tr({ x: ia, y: rings[i][2], z: za }),
-                        tr({ x: ib, y: rings[i + 1][2], z: zb }),
-                        rightR[i + 1],
-                        rightR[i],
-                    ],
-                    colors.boat
-                )
-                for (const side of [-1, 1])
-                    face(
-                        [
-                            tr({ x: side * ia, y: rings[i][2], z: za }),
-                            tr({ x: side * ib, y: rings[i + 1][2], z: zb }),
-                            tr({ x: side * ib, y: 0.1, z: zb }),
-                            tr({ x: side * ia, y: 0.1, z: za }),
-                        ],
-                        colors.seat
-                    )
-                face(
-                    [
-                        tr({ x: -ia, y: 0.1, z: za }),
-                        tr({ x: -ib, y: 0.1, z: zb }),
-                        tr({ x: ib, y: 0.1, z: zb }),
-                        tr({ x: ia, y: 0.1, z: za }),
-                    ],
-                    colors.seat
-                )
-            } else
-                face(
-                    [leftR[i], leftR[i + 1], rightR[i + 1], rightR[i]],
-                    colors.boat
-                )
-            const a = rings[i],
-                b = rings[i + 1]
-            for (const side of [-1, 1])
-                face(
-                    [
-                        tr({ x: side * a[1], y: a[2], z: a[0] }),
-                        tr({ x: side * b[1], y: b[2], z: b[0] }),
-                        tr({ x: side * b[1] * 0.8, y: 0.055, z: b[0] }),
-                        tr({ x: side * a[1] * 0.8, y: 0.055, z: a[0] }),
-                    ],
-                    mix(colors.boat, colors.hullShade, 0.15)
-                )
-        }
-        const rear = rings[3],
-            opening =
-                0.2349 *
-                Math.sqrt(Math.max(0, 1 - ((rear[0] + 0.16) / 0.55) ** 2))
-        face(
-            [
-                tr({ x: -opening, y: rear[2], z: rear[0] }),
-                tr({ x: opening, y: rear[2], z: rear[0] }),
-                tr({ x: opening, y: 0.1, z: rear[0] }),
-                tr({ x: -opening, y: 0.1, z: rear[0] }),
-            ],
-            colors.seat
-        )
-        // Recessed cockpit and compact seated silhouette.
-        face(
-            [
-                leftR[0],
-                rightR[0],
-                tr({ x: rings[0][1] * 0.8, y: 0.055, z: rings[0][0] }),
-                tr({ x: -rings[0][1] * 0.8, y: 0.055, z: rings[0][0] }),
-            ],
-            colors.boat
-        )
-        const pp = C.paddle(s),
-            a = pp.blade,
-            b = pp.other,
-            pivot = pp.center,
-            twist = s.stroke
-                ? -pp.side * 0.035 * Math.sin(Math.PI * pp.u) ** 2
-                : 0,
-            armEffort = s.stroke ? Math.sin(Math.PI * pp.u) ** 2 : 0
-        ellipsoid(
-            twist,
-            0.37,
-            -0.37,
-            0.2,
-            0.235,
-            0.15,
-            colors.vest,
-            0,
-            18,
-            8,
-            tr
-        )
-        ellipsoid(
-            twist,
-            0.715,
-            -0.32,
-            0.145,
-            0.17,
-            0.15,
-            colors.skin,
-            0,
-            18,
-            8,
-            tr
-        )
-
-        const l = a.x < 0 ? a : b,
-            r = a.x < 0 ? b : a
-        for (const side of [-1, 1]) {
-            const end = side < 0 ? l : r,
-                grip = {
-                    x: pivot.x + (end.x - pivot.x) * 0.27,
-                    y: pivot.y + (end.y - pivot.y) * 0.27,
-                    z: pivot.z + (end.z - pivot.z) * 0.27,
-                },
-                shoulder = {
-                    x: twist + side * 0.205 * Math.cos(pp.yaw),
-                    y: 0.52,
-                    z: -0.37 - side * 0.205 * Math.sin(pp.yaw * 1.8),
-                },
-                elbow = {
-                    x:
-                        side * (0.25 + 0.09 * armEffort) * Math.cos(pp.yaw) +
-                        grip.x * 0.1,
-                    y:
-                        (shoulder.y + grip.y) * 0.5 -
-                        0.025 -
-                        0.1 * (1 - armEffort),
-                    z:
-                        -0.25 -
-                        side * 0.22 * Math.sin(pp.yaw) +
-                        (grip.z + 0.32) * 0.35,
-                }
-            arm(shoulder, elbow, grip, tr)
-            ellipsoid(
-                grip.x,
-                grip.y,
-                grip.z,
-                0.055,
-                0.055,
-                0.055,
-                colors.skin,
-                0,
-                8,
-                3,
-                tr
-            )
-        }
-        // Small shaft segments sort against the deck individually, avoiding false intersections.
-        for (let i = 0; i < 48; i++) {
-            const t = i / 48,
-                q = (i + 1) / 48,
-                mid = (t + q) * 0.5
-            if (
-                Math.abs(mid - (1 - 0.27 / 0.76) * 0.5) <
-                    0.055 / (2 * 1.48 * 0.76) ||
-                Math.abs(mid - (1 + 0.27 / 0.76) * 0.5) <
-                    0.055 / (2 * 1.48 * 0.76)
-            )
-                continue
-            const from = {
-                    x: C.lerp(
-                        pivot.x + (a.x - pivot.x) * 0.76,
-                        pivot.x + (b.x - pivot.x) * 0.76,
-                        t
-                    ),
-                    y: C.lerp(
-                        0.46 + (a.y - 0.46) * 0.76,
-                        0.46 + (b.y - 0.46) * 0.76,
-                        t
-                    ),
-                    z: C.lerp(
-                        pivot.z + (a.z - pivot.z) * 0.76,
-                        pivot.z + (b.z - pivot.z) * 0.76,
-                        t
-                    ),
-                },
-                to = {
-                    x: C.lerp(
-                        pivot.x + (a.x - pivot.x) * 0.76,
-                        pivot.x + (b.x - pivot.x) * 0.76,
-                        q
-                    ),
-                    y: C.lerp(
-                        0.46 + (a.y - 0.46) * 0.76,
-                        0.46 + (b.y - 0.46) * 0.76,
-                        q
-                    ),
-                    z: C.lerp(
-                        pivot.z + (a.z - pivot.z) * 0.76,
-                        pivot.z + (b.z - pivot.z) * 0.76,
-                        q
-                    ),
-                }
-            rod(from, to, 0.021, colors.shaft, tr)
-        }
-
-        // Tapered wooden blades follow the rigid shaft, instead of floating flat ovals.
-        for (const end of [a, b]) {
-            const ux = (end.x - pivot.x) / 1.48,
-                uy = (end.y - pivot.y) / 1.48,
-                uz = (end.z - pivot.z) / 1.48,
-                n = Math.hypot(ux, uz),
-                vx = (-uy * ux) / n,
-                vy = n,
-                vz = (-uy * uz) / n,
-                outline = [
-                    [-0.39, 0],
-                    [-0.28, 0.085],
-                    [-0.12, 0.145],
-                    [0.13, 0.145],
-                    [0.25, 0.08],
-                    [0.28, 0],
-                    [0.25, -0.08],
-                    [0.13, -0.145],
-                    [-0.12, -0.145],
-                    [-0.28, -0.085],
-                ],
-                front: Point[] = [],
-                back: Point[] = []
-            for (const [t, w] of outline) {
-                front.push(
-                    tr({
-                        x: end.x + ux * t + vx * w - (uz / n) * 0.014,
-                        y: end.y + uy * t + vy * w,
-                        z: end.z + uz * t + vz * w + (ux / n) * 0.014,
-                    })
-                )
-                back.push(
-                    tr({
-                        x: end.x + ux * t + vx * w + (uz / n) * 0.014,
-                        y: end.y + uy * t + vy * w,
-                        z: end.z + uz * t + vz * w - (ux / n) * 0.014,
-                    })
-                )
-            }
-            face(front, colors.blade)
-            face(back, colors.blade)
-            for (let i = 0; i < outline.length; i++) {
-                const j = (i + 1) % outline.length
-                face(
-                    [front[i], front[j], back[j], back[i]],
-                    mix(colors.blade, colors.paper, 0.35)
-                )
-            }
-        }
-    }
-
     function shadow() {
         const dep = C.depth(s.x, s.z),
             offset = 0.06 + dep * 0.55,
@@ -1739,7 +1301,7 @@ export function mountRiverlight(root: HTMLElement) {
         wildlife()
         shadow()
         wake()
-        boat()
+        drawKayak(gpu, s)
         const start = Math.floor((cam.z + 2) / 2) * 2
         const transition = Math.floor((s.z + 96) / 16) * 16
         const end = Math.ceil((s.z + 650) / 8) * 8
@@ -1933,8 +1495,6 @@ export function mountRiverlight(root: HTMLElement) {
         birds.clear()
         deer.clear()
         trees.clear()
-        for (const c of sprites.values()) c.width = c.height = 1
-        sprites.clear()
         shadeCache.clear()
         s.wake = []
         s.ripples = []
@@ -2013,7 +1573,6 @@ export function mountRiverlight(root: HTMLElement) {
                 })
             ),
             trees: trees.size,
-            sprites: sprites.size,
             bankDistance: C.bankDistance(s.x, s.z),
             reedRootBeds: reedRoots.size,
             targetFPS: 60,

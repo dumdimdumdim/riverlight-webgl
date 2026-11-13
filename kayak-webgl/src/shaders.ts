@@ -65,62 +65,94 @@ export const meshVertex = `#version 300 es
 layout(location=0) in vec3 position;
 layout(location=1) in vec4 color;
 layout(location=2) in vec4 data;
+layout(location=3) in vec4 instancePlacement;
+layout(location=4) in vec4 instanceColor;
+layout(location=5) in vec4 instanceRotation;
 out vec3 world;
 out vec4 tint;
-flat out vec3 info;
+out vec3 normal;
+out vec3 localPosition;
+flat out highp int material;
 out vec2 texcoord;
+uniform highp int mode; // 0 scene, 1 instanced trees, 2 water decals
 ${camera}
 void main(){
-    world=position;
-    tint=color;
-    info = data.xyz;
+    world = position;
+    normal = data.xyz;
+    localPosition = position;
+    tint = color;
+    material = int(data.w);
     texcoord = data.xy;
-    gl_Position = project(world);
+    if (mode==1) {
+        float c=instanceRotation.x, s=instanceRotation.y;
+        mat2 rotation=mat2(c,-s,s,c);
+        world.xz=rotation*world.xz;
+        normal.xz=rotation*normal.xz;
+        world=world*instancePlacement.w+instancePlacement.xyz;
+        localPosition.x+=instanceRotation.z;
+        tint.a=instanceColor.a;
+        tint.rgb*=material==4 ? vec3(.42,.31,.206) : instanceColor.rgb;
+    }
+    gl_Position=project(world);
 }`
 export const meshFragment = `#version 300 es
 precision highp float;
-precision highp sampler2DArray;
 in vec3 world;
 in vec4 tint;
-flat in vec3 info;
-in vec2 texcoord;
+in vec3 normal;
+in vec3 localPosition;
+flat in highp int material;
 uniform vec3 eye;
 uniform float mirror;
-uniform sampler2DArray canopy;
-uniform int mode; // 0 solid, 1 foliage, 2 water decals
+uniform highp int mode;
 out vec4 frag;
 ${atmosphere}
 void main(){
-    vec3 col = tint.rgb;
-    float alpha = tint.a;
+    vec3 col=tint.rgb;
     if (mode==2) {
-        frag=vec4(col,alpha);
+        frag=vec4(col,tint.a);
         return;
     }
-    float dist = length(world.xz-eye.xz);
-    if (mode == 1) {
-        vec4 leaf=texture(canopy,vec3(texcoord,info.z));
-        if (leaf.a < .44) discard;
-        col=leaf.rgb/max(leaf.a,.01);
-        float backlight = smoothstep(.4,1.,texcoord.y)*(1.-texcoord.x);
-        col *= vec3(.76,.89,.75) + backlight*vec3(.36,.27,.11);
-    } else if (info.x > .5) {
-        vec2 p = world.xz;
-        float groundTone = noise(p*.34)*.7+noise(p*2.3)*.3;
-        float flecks = noise(p*15.)-.5;
-        col *= .69 + groundTone*.45 + flecks*.13;
-        col = mix(col, vec3(.62,.54,.29), smoothstep(.66,.98,groundTone)*.24);
+    if (world.y<0.) discard;
+    float dist=length(world.xz-eye.xz);
+    if (material==1) {
+        vec2 p=world.xz;
+        float groundTone=noise(p*.34)*.7+noise(p*2.3)*.3;
+        float flecks=noise(p*15.)-.5;
+        col*=.69+groundTone*.45+flecks*.13;
+        col=mix(col,vec3(.62,.54,.29),smoothstep(.66,.98,groundTone)*.24);
+    } else if (material==0) {
+        vec3 n=cross(dFdx(world),dFdy(world));
+        n*=inversesqrt(max(dot(n,n),1e-16));
+        col*=vec3(.84,.89,.88)+abs(dot(n,sun))*vec3(.29,.23,.16);
     } else {
-        // Gentle key light on the original flat pigment colors.
-        vec3 n = cross(dFdx(world),dFdy(world));
-        n *= inversesqrt(max(dot(n,n),1e-16));
-        float diffuse = abs(dot(n,sun));
-        col *= vec3(.84,.89,.88) + diffuse*vec3(.29,.23,.16);
+        vec3 n=normalize(normal);
+        vec3 key=normalize(vec3(-.48,.74,-.43));
+        float diffuse=max(dot(n,key),0.);
+        float bounce=max(n.y,0.);
+        vec3 view=normalize(vec3(eye.x,eye.y*mirror,eye.z)-world);
+        float spec=pow(max(dot(n,normalize(key+view)),0.), material==3 ? 50. : 30.);
+        if (material==5) {
+            vec2 leaf=localPosition.xz*19.+localPosition.y*vec2(9.2,5.7);
+            float detail=1.-smoothstep(30.,90.,dist);
+            float mottling=noise(leaf)*.57+noise(leaf*2.14)*.43;
+            float light=.55+diffuse*.37+bounce*.16;
+            col*=light+(mottling-.5)*.29*detail+smoothstep(.7,2.75,localPosition.y)*.13;
+            col+=vec3(.17,.13,.043)*pow(max(dot(n,sun),0.),4.)*.39;
+        } else if (material==4) {
+            float bark=noise(localPosition.xz*37.+localPosition.y*vec2(2.3,1.2));
+            col*=.51+diffuse*.53+bark*.24;
+        } else {
+            col*=vec3(.63,.66,.70)+diffuse*vec3(.44,.39,.32)+bounce*.07;
+            if (material==3 || material==6) {
+                col+=vec3(1.,.84,.57)*spec*(material==3 ? .40 : .24);
+            }
+        }
     }
-    if(alpha < .999 && hash(floor(gl_FragCoord.xy)) > alpha) discard;
-    float fog = 1. - exp(-dist * (mode==1 ? .010 : .0065));
-    col = mix(col, vec3(.74,.76,.62), fog*.88);
-    col += (hash(gl_FragCoord.xy)-.5)*.022;
+    if(tint.a<.999 && hash(floor(gl_FragCoord.xy))>tint.a) discard;
+    float fog=1.-exp(-dist*(mode==1 ? .008 : .0065));
+    col=mix(col,vec3(.74,.76,.62),fog*.88);
+    col+=(hash(gl_FragCoord.xy)-.5)*.019;
     frag=vec4(col,1);
 }`
 export const waterFragment = `#version 300 es
@@ -150,20 +182,25 @@ void main(){
         float r=1.+.1*sin(a*3.+phases[i])+.05*cos(a*5.-phases[i]);
         edge=min(edge,(length(offset)-r)*o.z);
     }
-    float a = dot(p,vec2(.64,1.58))-time*1.05;
-    float b = dot(p,vec2(-1.14,2.5))+time*.77;
-    float c = dot(p,vec2(1.88,4.2))-time*1.53;
-    float d = dot(p,vec2(-.38,7.6))+time*1.92;
-    float detail = 1.-smoothstep(14.,55.,dist);
-    vec2 wave = vec2(.042,.087)*cos(a) + vec2(-.034,.072)*cos(b);
-    wave += (vec2(.026,.052)*cos(c)+vec2(-.012,.032)*cos(d))*detail;
+    // Low frequency drift bends each family of waves by a different amount.
+    vec2 flow=vec2(noise(p*.24+vec2(6.,-time*.026)),noise(p*.31+vec2(-3.,time*.041)))-.5;
+    float a=dot(p,vec2(.42,1.67))+flow.x*3.2-time*.70;
+    float b=dot(p,vec2(-1.13,2.76))+flow.y*4.6+time*.57;
+    float c=dot(p,vec2(.88,7.6))+(flow.x+flow.y)*6.8-time*1.3;
+    float detail=1.-smoothstep(12.,66.,dist);
+    float distanceCalm=mix(.47,1.,1.-smoothstep(22.,135.,dist));
+    float wind=noise(p*.75+vec2(time*.045,-time*.11));
+    vec2 wave=vec2(.024,.057)*cos(a)*( .55+wind*.67)
+        + vec2(-.025,.056)*cos(b)*(.8-flow.x*.42);
+    wave*=distanceCalm;
+    wave+=vec2(.013,.041)*cos(c)*wind*detail;
     vec3 n = normalize(vec3(wave.x,1.,wave.y));
     vec3 ray = reflect(-view,n);
     float fresnel = pow(1.-max(0.,dot(n,view)),3.5);
     vec3 blue = vec3(.076,.38,.40), pale = vec3(.43,.65,.43);
-    float grain = sin(a+b*.55)*.5 + sin(b-c*.71)*.3 + sin(d+c)*.2;
+    float grain = noise(p*vec2(.42,1.2)+flow+vec2(.0,-time*.09))-.5;
     vec3 pigment = mix(pale,blue,smoothstep(-.18,3.6,edge+(noise(p*1.6)-.5)*.34));
-    pigment += grain*vec3(.030,.043,.033)*mix(.45,1.,detail);
+    pigment += grain*vec3(.027,.040,.033);
     vec3 env = sky(ray);
     vec2 st = gl_FragCoord.xy/resolution;
     vec2 stretch = wave * vec2(.11,.071) * (.62 + .38*detail);
@@ -171,14 +208,17 @@ void main(){
     env = mix(env, refl.rgb/max(refl.a,.01)*vec3(.83,.92,.87), refl.a*.84);
     vec3 water = mix(pigment, env, .15 + fresnel*.55);
     float glint = max(dot(ray,sun),0.);
-    water += vec3(1.,.74,.40)*(pow(glint,95.)*.34+pow(glint,20.)*.12);
+    water += vec3(1.,.74,.40)*(pow(glint,110.)*.22+pow(glint,27.)*.095);
     float foam = (1.-smoothstep(.017,.17,abs(edge-.10+.045*sin(p.y*6.-time))))*.23;
     water = mix(water,vec3(.88,.91,.69),foam);
     water = mix(water, vec3(.74,.76,.62), (1.-exp(-dist*.008))*.67);
-    // Thin silver crests, filtered out as their screen footprint shrinks.
-    float crest = sin(a*.38 + c*1.24 + .56*sin(b))*.61 + sin(d*.61+b)*.39;
-    float ripple = smoothstep(.76,.96,crest);
-    water += vec3(.08,.11,.09)*ripple*detail;
+    // Broken, thin capillary highlights appear in local patches of wind.
+    float crest=sin(dot(p,vec2(-1.8,14.2))+flow.y*9.+noise(p*1.83)*2.8-time*1.4);
+    float band=1.-smoothstep(.5,2.6,fwidth(c));
+    float breaks=noise(p*vec2(.94,2.8)+vec2(time*.034,-time*.082)+flow);
+    float ripple=smoothstep(.80,.99,crest)*smoothstep(.46,.77,breaks)
+        *smoothstep(.48,.78,wind)*band*detail;
+    water+=vec3(.055,.074,.070)*ripple;
     water += (hash(gl_FragCoord.xy)-.5)*.021;
     frag=vec4(water,1.);
 }`
