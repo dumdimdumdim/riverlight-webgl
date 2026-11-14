@@ -312,86 +312,55 @@ export const KayakCore = (() => {
     }
 })()
 
-// A foreleg has shoulder, elbow, carpus and hoof; a hind leg has hip,
-// stifle, hock and hoof. The upper joints remain close to the body.
+export const DEER_STRIDE = 2.48
+
+// The planted hoof moves backward by exactly the distance the body advances.
+// During swing the hoof lifts and folds before it extends for the next landing.
 export function deerLegPose(
-    cycle: number,
-    side: number,
-    front: number,
-    effort: number,
-    bounce: number
+    cycle: number, side: number, front: number, effort: number, bounce: number, pitch = 0,
 ) {
-    // Rotary gallop: RH -> LH -> LF -> RF, followed by gathered flight.
-    // Timings are a stylized cycle based on the cited motion references.
-    const contact = front < 0 ? (side > 0 ? 0 : 0.09) : side < 0 ? 0.38 : 0.47,
-        phase = (((cycle - contact) % 1) + 1) % 1,
-        stance = 0.24,
-        swing = Math.max(0, (phase - stance) / (1 - stance)),
-        // Stride * stance / 2: a supporting hoof travels backwards at body speed.
-        reach = (2.1 * stance) / 2,
-        keys = [
-            [0, -reach, 0],
-            [0.18, -0.33, 0.16],
-            [0.48, -0.08, 0.43],
-            [0.76, 0.27, 0.25],
-            [1, reach, 0],
-        ],
-        sample = (column: number) => {
-            let i = 0
-            while (i < keys.length - 2 && swing > keys[i + 1][0]) i++
-            const t = (swing - keys[i][0]) / (keys[i + 1][0] - keys[i][0]),
-                smooth = t * t * (3 - 2 * t)
-            return (
-                keys[i][column] +
-                (keys[i + 1][column] - keys[i][column]) * smooth
-            )
-        },
-        offset =
-            (phase < stance ? reach * (1 - (2 * phase) / stance) : sample(1)) *
-            effort,
-        lift =
-            (phase < stance ? 0 : sample(2)) * effort * (front < 0 ? 0.7 : 1),
-        isFront = front > 0,
-        hip = {
-            x: side * (isFront ? 0.16 : 0.185),
-            y: (isFront ? 1.13 : 1.08) - (isFront ? 0.18 : 0.07) * effort,
-            z: front * 0.42,
-        },
-        // The elbow points back; the true hind knee points forward.
-        upperAngle = isFront
-            ? -0.34 - offset * 0.7
-            : Math.max(0.35, Math.min(1.12, 0.66 + offset * 1.6 + lift * 0.8)),
-        upperLength = isFront ? 0.34 : 0.5,
-        knee = {
-            x: hip.x,
-            y: hip.y - Math.cos(upperAngle) * upperLength,
-            z: hip.z + Math.sin(upperAngle) * upperLength,
-        },
-        foot = {
-            x: hip.x,
-            y: 0.04 + lift - bounce,
-            z: hip.z + (isFront ? 0.015 : 0.035) + offset,
-        },
-        dy = foot.y - knee.y,
-        dz = foot.z - knee.z,
-        distance = Math.hypot(dy, dz),
-        upper = isFront ? 0.4 : 0.34,
-        lower = isFront ? 0.4 : 0.49,
-        along =
-            (upper * upper - lower * lower + distance * distance) /
-            (2 * distance),
-        bend = Math.sqrt(Math.max(0, upper * upper - along * along)),
-        direction = isFront ? -1 : 1,
-        hock = {
-            x: hip.x,
-            y:
-                knee.y +
-                (dy * along) / distance -
-                (direction * dz * bend) / distance,
-            z:
-                knee.z +
-                (dz * along) / distance +
-                (direction * dy * bend) / distance,
-        }
+    const { clamp, lerp } = KayakCore
+    const isFront = front > 0
+    const contact = isFront ? (side < 0 ? .33 : .41) : (side > 0 ? .94 : .02)
+    const phase = ((cycle-contact)%1+1)%1
+    const stance = isFront ? .19 : .21
+    const reach = DEER_STRIDE*stance*.5
+    const swing = clamp((phase-stance)/(1-stance),0,1)
+    const recovery = swing*swing*(3-2*swing)
+    const strideOffset = phase < stance ? reach-DEER_STRIDE*phase : lerp(-reach,reach,recovery)
+    const lift = Math.sin(Math.PI*swing)**2*(isFront ? .43 : .34)*effort
+    const hipY = isFront ? 1.09 : 1.04
+    const hipZ = front*.42
+    const hip = {
+        x: side*(isFront ? .16 : .185),
+        y: 1.04+(hipY-1.04)*Math.cos(pitch)-hipZ*Math.sin(pitch),
+        z: hipZ*Math.cos(pitch)+(hipY-1.04)*Math.sin(pitch),
+    }
+    const foot = {
+        x: hip.x,
+        y: .04+lift-bounce,
+        z: hipZ+(isFront ? .03 : .09)+strideOffset*effort,
+    }
+    const ankleLength = isFront ? .24 : .30
+    const fold = Math.sin(Math.PI*swing)*effort
+    const ankleAngle = (isFront ? -.13 : -.30)+(isFront ? .95 : -.54)*fold
+    const hock = {
+        x: hip.x,
+        y: foot.y+Math.cos(ankleAngle)*ankleLength,
+        z: foot.z+Math.sin(ankleAngle)*ankleLength,
+    }
+    const dy = hock.y-hip.y, dz = hock.z-hip.z
+    const upper = isFront ? .39 : .47
+    const lower = isFront ? .52 : .46
+    const rawDistance = Math.hypot(dy,dz)
+    const distance = clamp(rawDistance,Math.abs(upper-lower)+.001,upper+lower-.001)
+    const axisY = dy/Math.max(.001,rawDistance), axisZ = dz/Math.max(.001,rawDistance)
+    const along = (upper*upper-lower*lower+distance*distance)/(2*distance)
+    const bend = Math.sqrt(Math.max(0,upper*upper-along*along))*(isFront ? 1 : -1)
+    const knee = {
+        x: hip.x,
+        y: hip.y+axisY*along-axisZ*bend,
+        z: hip.z+axisZ*along+axisY*bend,
+    }
     return { hip, knee, hock, foot }
 }

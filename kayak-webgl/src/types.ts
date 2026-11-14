@@ -24,6 +24,7 @@ export type Deer = {
     fleeRange: number
     alertDelay: number
     fleeDelay: number
+    strideDistance: number
 }
 export type Habitat = {
     key: string
@@ -50,9 +51,7 @@ export type RiverBird = {
     escaped: boolean
     age: number
     heading: number
-    targetHeading?: number
-    vx: number
-    vz: number
+    departure?: { heading: number; vertical: boolean }
     seed: number
     delay: number
 }

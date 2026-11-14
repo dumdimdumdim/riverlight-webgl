@@ -1,4 +1,5 @@
-import { KayakCore, deerLegPose } from "./core"
+import { KayakCore, deerLegPose, DEER_STRIDE } from "./core"
+import { advanceBird, birdDeparture } from "./wildlife"
 import { RiverRenderer } from "./renderer"
 import { drawKayak } from "./kayak"
 import type { Projected, Point, Deer, Habitat, RiverBird, Tree, Transform, Wake } from "./types"
@@ -624,6 +625,7 @@ export function mountRiverlight(root: HTMLElement) {
             alertRange: 39 + C.rand(id + 961) * 3,
             fleeRange: 28 + C.rand(id + 971) * 2,
             alertDelay: member * 0.65 + 0.1 + C.rand(id + 981) * 0.25,
+            strideDistance: 0,
             fleeDelay: member * 0.6 + 0.1 + C.rand(id + 991) * 0.3,
         }
     }
@@ -663,17 +665,17 @@ export function mountRiverlight(root: HTMLElement) {
                 }
             }
             if (o.state === "fleeing") {
-                const target = Math.atan2(o.side, 0.45),
-                    turn = 1 - Math.exp(-dt * 7)
-                o.heading += C.angleDelta(target, o.heading) * turn
-                const speed =
-                    4.6 * (1 - Math.exp(-Math.max(0, o.age - 0.35) * 3))
-                // Always escape landward, including the short turning animation.
-                o.x += Math.sin(o.heading) * speed * dt
-                o.z += Math.cos(o.heading) * speed * dt
-                const bank =
-                    C.center(o.z) + o.side * (C.half(o.z) + C.sand(o.z) + 0.7)
-                o.x = o.side > 0 ? Math.max(o.x, bank) : Math.min(o.x, bank)
+                const target = Math.atan2(o.side, .52 + C.rand(o.id+890)*.55)
+                const remainingTurn = C.angleDelta(target,o.heading)
+                o.heading += remainingTurn*(1-Math.exp(-dt*7))
+                const speed = 5.6*(1-Math.exp(-Math.max(0,o.age-.13)*2.8))
+                const step = speed*dt*Math.max(0,Math.cos(remainingTurn))
+                const stride = o.strideDistance / DEER_STRIDE
+                const push = 1+.22*Math.cos((stride-.23)*C.TAU)
+                const distance = step*push
+                o.x += Math.sin(o.heading)*distance
+                o.z += Math.cos(o.heading)*distance
+                o.strideDistance += distance
                 if (o.age > 6) o.state = "escaped"
             }
         }
@@ -685,15 +687,12 @@ export function mountRiverlight(root: HTMLElement) {
         const scale = Math.min(w, h) * FOCAL_RATIO / base.d
         if (base.x < -scale * 2 || base.x > w + scale * 2) return
         const running = o.state === "fleeing",
-            runAge = running ? Math.max(0, o.age - 0.35) : 0,
-            travelled = 4.6 * (runAge + (Math.exp(-runAge * 3) - 1) / 3),
-            gait = travelled / 2.1,
-            effort = running ? 1 - Math.exp(-runAge * 3) : 0,
-            // Rise into the gathered flight at the end of the stride, then land.
-            cycle = gait % 1,
-            flight =
-                cycle > 0.71 ? Math.sin(((cycle - 0.71) / 0.29) * Math.PI) : 0,
-            bounce = effort * (0.025 + flight * 0.12),
+            gait = o.strideDistance/DEER_STRIDE,
+            effort = running ? 1-Math.exp(-Math.max(0,o.age-.10)*3.8) : 0,
+            cycle = gait%1,
+            airborne = C.clamp((cycle-.59)/.41,0,1),
+            flight = Math.sin(Math.PI*airborne),
+            bounce = effort*(.205*flight-.055*Math.sin(Math.PI*C.clamp(cycle/.59,0,1))),
             co = Math.cos(o.heading),
             si = Math.sin(o.heading),
             tr = (p: Point): Point => ({
@@ -717,7 +716,7 @@ export function mountRiverlight(root: HTMLElement) {
             rz: number,
             color: string
         ) => ellipsoid(x, y, z, rx, ry, rz, color, o.phase, 8, 4, tr)
-        const bodyPitch = Math.sin((cycle - 0.14) * C.TAU) * effort * 0.07,
+        const bodyPitch = Math.sin((cycle-.46)*C.TAU)*effort*.145,
             torsoTr = (p: Point): Point =>
                 tr({
                     x: p.x,
@@ -750,9 +749,10 @@ export function mountRiverlight(root: HTMLElement) {
                     side,
                     front,
                     effort,
-                    bounce
+                    bounce,
+                    bodyPitch,
                 )
-                rod(torsoTr(hip), tr(knee), front > 0 ? 0.065 : 0.075, coat)
+                rod(tr(hip), tr(knee), front > 0 ? 0.065 : 0.075, coat)
                 // Keep the actual forward-facing stifle visible below the flank.
                 if (front < 0)
                     body(knee.x, knee.y, knee.z, 0.075, 0.08, 0.075, coat)
@@ -773,13 +773,13 @@ export function mountRiverlight(root: HTMLElement) {
                       : 1,
             eased = rise * rise * (3 - 2 * rise),
             grazing = 1 - eased,
-            angle = 0.65 * grazing,
+            angle = .65*grazing + effort*(.20+.12*Math.sin((cycle-.14)*C.TAU)),
             headY = C.lerp(
                 0.38 + Math.sin(s.time * 0.65 + o.phase) * 0.01,
-                1.73,
+                1.73-effort*(.17+.09*Math.sin((cycle-.06)*C.TAU)),
                 eased
             ),
-            headZ = C.lerp(1.08, 0.74, eased),
+            headZ = C.lerp(1.08,.74+effort*(.14+.06*flight),eased),
             headTr = (p: Point): Point => {
                 const y = p.y - 1.73,
                     z = p.z - 0.74
@@ -884,8 +884,6 @@ export function mountRiverlight(root: HTMLElement) {
                 escaped: false,
                 age: 0,
                 heading: C.rand(o.seed + j * 29) * C.TAU,
-                vx: 0,
-                vz: 0,
                 seed: o.seed + j * 97,
                 delay: large ? 0.15 : 0.05 + j * 0.12,
             })
@@ -939,7 +937,7 @@ export function mountRiverlight(root: HTMLElement) {
             addHabitat({
                 key: "island-tree:" + island.i,
                 x: island.x + 0.3,
-                y: 4.8,
+                y: 6.9,
                 z: island.z,
                 seed: island.i * 193 + 8411,
                 kind: "tree",
@@ -958,28 +956,20 @@ export function mountRiverlight(root: HTMLElement) {
                 if (distance < (o.large ? 15 : 12)) o.age += dt
                 else o.age = 0
                 if (o.age >= o.delay) {
+                    const obstacles: Tree[] = []
+                    for (let chunk = Math.floor((o.z-63)/18); chunk <= Math.floor((o.z+63)/18); chunk++)
+                        obstacles.push(...treeChunk(chunk).filter(tree => !tree.shrub))
+                    for (const island of C.islands(o.z,62))
+                        obstacles.push({ x:island.x,y:.18,z:island.z,size:2.2,seed:island.i,color:colors.gold })
+                    const departure = birdDeparture(o,{x:s.x,y:0,z:s.z},obstacles)
+                    // In dense cover, wait until there is a way out without clipping a crown.
+                    o.age = departure ? 0 : o.delay-.8
+                    if (!departure) continue
+                    o.departure = departure
                     o.flying = true
-                    o.age = 0
-                    const dx = o.x - s.x,
-                        dz = Math.max(2, o.z - s.z),
-                        len = Math.hypot(dx, dz) || 1,
-                        spread = (C.rand(o.seed + 51) - 0.5) * 0.65,
-                        a = Math.atan2(dx / len, dz / len) + spread
-                    o.vx = Math.sin(a)
-                    o.vz = Math.cos(a)
-                    o.targetHeading = a
                 }
             } else {
-                o.age += dt
-                o.heading +=
-                    C.angleDelta(o.targetHeading ?? o.heading, o.heading) *
-                    (1 - Math.exp(-dt * 5))
-                const flightAge = Math.max(0, o.age - (o.large ? 0.65 : 0.35)),
-                    launch = 1 - Math.exp(-flightAge * 2.2),
-                    speed = o.large ? 4.8 : 6.5
-                o.x += o.vx * speed * launch * dt
-                o.z += o.vz * speed * launch * dt
-                o.y += (o.large ? 1.7 : 2.4) * launch * dt
+                advanceBird(o,dt)
                 if (o.age > 9) o.escaped = true
             }
         }
