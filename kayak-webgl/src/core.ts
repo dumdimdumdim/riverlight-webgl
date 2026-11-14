@@ -312,38 +312,21 @@ export const KayakCore = (() => {
     }
 })()
 
-export const DEER_STRIDE = 2.48
-
-// The planted hoof moves backward by exactly the distance the body advances.
-// During swing the hoof lifts and folds before it extends for the next landing.
-export function deerLegPose(
-    cycle: number, side: number, front: number, effort: number, bounce: number, pitch = 0,
-) {
-    const { clamp, lerp } = KayakCore
+export function deerRestLeg(side: number, front: number) {
+    const { clamp } = KayakCore
     const isFront = front > 0
-    const contact = isFront ? (side < 0 ? .33 : .41) : (side > 0 ? .94 : .02)
-    const phase = ((cycle-contact)%1+1)%1
-    const stance = isFront ? .19 : .21
-    const reach = DEER_STRIDE*stance*.5
-    const swing = clamp((phase-stance)/(1-stance),0,1)
-    const recovery = swing*swing*(3-2*swing)
-    const strideOffset = phase < stance ? reach-DEER_STRIDE*phase : lerp(-reach,reach,recovery)
-    const lift = Math.sin(Math.PI*swing)**2*(isFront ? .43 : .34)*effort
-    const hipY = isFront ? 1.09 : 1.04
-    const hipZ = front*.42
     const hip = {
         x: side*(isFront ? .16 : .185),
-        y: 1.04+(hipY-1.04)*Math.cos(pitch)-hipZ*Math.sin(pitch),
-        z: hipZ*Math.cos(pitch)+(hipY-1.04)*Math.sin(pitch),
+        y: isFront ? 1.09 : 1.04,
+        z: front*.42,
     }
     const foot = {
         x: hip.x,
-        y: .04+lift-bounce,
-        z: hipZ+(isFront ? .03 : .09)+strideOffset*effort,
+        y: .04,
+        z: hip.z+(isFront ? .03 : .09),
     }
     const ankleLength = isFront ? .24 : .30
-    const fold = Math.sin(Math.PI*swing)*effort
-    const ankleAngle = (isFront ? -.13 : -.30)+(isFront ? .95 : -.54)*fold
+    const ankleAngle = isFront ? -.13 : -.30
     const hock = {
         x: hip.x,
         y: foot.y+Math.cos(ankleAngle)*ankleLength,

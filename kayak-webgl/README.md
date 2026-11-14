@@ -20,3 +20,5 @@ Use **← / →**, the on-screen paddle buttons, or tap either side of the water
 - `src/shaders.ts` defines the animated water, sky, light, and distance fog. Add `?debug` to inspect the running game with `window.riverlight.snapshot()`.
 
 Trees use instanced procedural models. The kayak and paddler use curved surfaces with interpolated lighting. Reduced motion freezes the decorative water animation while keeping paddling playable.
+
+The deer use the original procedural mesh and a gallop adapted from the [Quaternius Ultimate Animated Animal Pack](https://quaternius.com/packs/ultimateanimatedanimals.html) (CC0). The game bundles only the joint poses. To regenerate them, run `python3 tools/bake-deer-gallop.py /path/to/Deer.gltf > src/deer-gallop.ts` from this directory.

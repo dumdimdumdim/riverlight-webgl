@@ -1,4 +1,5 @@
-import { KayakCore, deerLegPose, DEER_STRIDE } from "./core"
+import { KayakCore, deerRestLeg } from "./core"
+import { gallopFrames, GALLOP_STRIDE } from "./deer-gallop"
 import { advanceBird, birdDeparture } from "./wildlife"
 import { RiverRenderer } from "./renderer"
 import { drawKayak } from "./kayak"
@@ -6,6 +7,7 @@ import type { Projected, Point, Deer, Habitat, RiverBird, Tree, Transform, Wake 
 
 const FOCAL_RATIO = 1.08
 const CAMERA_TRAIL = 5.2
+const restDeerLegs = [-1, 1].flatMap(front => [-1, 1].map(side => deerRestLeg(side, front)))
 
 const PALETTE = {
     shade: "#627968",
@@ -669,10 +671,7 @@ export function mountRiverlight(root: HTMLElement) {
                 const remainingTurn = C.angleDelta(target,o.heading)
                 o.heading += remainingTurn*(1-Math.exp(-dt*7))
                 const speed = 5.6*(1-Math.exp(-Math.max(0,o.age-.13)*2.8))
-                const step = speed*dt*Math.max(0,Math.cos(remainingTurn))
-                const stride = o.strideDistance / DEER_STRIDE
-                const push = 1+.22*Math.cos((stride-.23)*C.TAU)
-                const distance = step*push
+                const distance = speed*dt*Math.max(0,Math.cos(remainingTurn))
                 o.x += Math.sin(o.heading)*distance
                 o.z += Math.cos(o.heading)*distance
                 o.strideDistance += distance
@@ -687,17 +686,20 @@ export function mountRiverlight(root: HTMLElement) {
         const scale = Math.min(w, h) * FOCAL_RATIO / base.d
         if (base.x < -scale * 2 || base.x > w + scale * 2) return
         const running = o.state === "fleeing",
-            gait = o.strideDistance/DEER_STRIDE,
-            effort = running ? 1-Math.exp(-Math.max(0,o.age-.10)*3.8) : 0,
-            cycle = gait%1,
-            airborne = C.clamp((cycle-.59)/.41,0,1),
-            flight = Math.sin(Math.PI*airborne),
-            bounce = effort*(.205*flight-.055*Math.sin(Math.PI*C.clamp(cycle/.59,0,1))),
+            blend = running ? C.clamp(o.strideDistance/.92,0,1) : 0,
+            effort = blend*blend*(3-2*blend),
+            frameCount = gallopFrames.length,
+            // Lead with the hind legs from a planted pose.
+            frame = (o.strideDistance/GALLOP_STRIDE*frameCount+9)%frameCount,
+            frameIndex = Math.floor(frame),
+            a = gallopFrames[frameIndex],
+            b = gallopFrames[(frameIndex+1)%frameCount],
+            sample = (i: number) => C.lerp(a[i],b[i],frame-frameIndex),
             co = Math.cos(o.heading),
             si = Math.sin(o.heading),
             tr = (p: Point): Point => ({
                 x: o.x + p.x * co + p.z * si,
-                y: 0.22 + p.y + bounce,
+                y: 0.22 + p.y,
                 z: o.z - p.x * si + p.z * co,
             }),
             coat = "#ac7950",
@@ -716,17 +718,20 @@ export function mountRiverlight(root: HTMLElement) {
             rz: number,
             color: string
         ) => ellipsoid(x, y, z, rx, ry, rz, color, o.phase, 8, 4, tr)
-        const bodyPitch = Math.sin((cycle-.46)*C.TAU)*effort*.145,
+        const torsoY = C.lerp(1.04,sample(0),effort),
+            bodyPitch = sample(1)*effort,
+            pitchCos = Math.cos(bodyPitch),
+            pitchSin = Math.sin(bodyPitch),
             torsoTr = (p: Point): Point =>
                 tr({
                     x: p.x,
                     y:
-                        1.04 +
-                        (p.y - 1.04) * Math.cos(bodyPitch) -
-                        p.z * Math.sin(bodyPitch),
+                        torsoY +
+                        (p.y - 1.04) * pitchCos -
+                        p.z * pitchSin,
                     z:
-                        (p.y - 1.04) * Math.sin(bodyPitch) +
-                        p.z * Math.cos(bodyPitch),
+                        (p.y - 1.04) * pitchSin +
+                        p.z * pitchCos,
                 })
         ellipsoid(0, 1.04, 0, 0.25, 0.34, 0.65, coat, o.phase, 8, 4, torsoTr)
         ellipsoid(
@@ -742,26 +747,31 @@ export function mountRiverlight(root: HTMLElement) {
             4,
             torsoTr
         )
-        for (const side of [-1, 1]) {
-            for (const front of [-1, 1]) {
-                const { hip, knee, hock, foot } = deerLegPose(
-                    gait,
-                    side,
-                    front,
-                    effort,
-                    bounce,
-                    bodyPitch,
-                )
-                rod(tr(hip), tr(knee), front > 0 ? 0.065 : 0.075, coat)
-                // Keep the actual forward-facing stifle visible below the flank.
-                if (front < 0)
-                    body(knee.x, knee.y, knee.z, 0.075, 0.08, 0.075, coat)
-                rod(knee, hock, front > 0 ? 0.04 : 0.042, coat, tr)
-                if (front < 0) {
-                    tube([hock, foot], [0.03, 0.018], dark, tr, 6)
-                } else rod(hock, foot, 0.027, dark, tr)
-                body(foot.x, foot.y, foot.z + 0.025, 0.043, 0.038, 0.07, dark)
-            }
+        for (let leg = 0; leg < restDeerLegs.length; leg++) {
+            const front = leg >= 2,
+                rest = restDeerLegs[leg],
+                offset = 4+leg*12,
+                joint = (p: Point, j: number): Point => {
+                    const i = offset+j*3
+                    return effort === 0 ? p : {
+                        x: C.lerp(p.x,sample(i),effort),
+                        y: C.lerp(p.y,sample(i+1),effort),
+                        z: C.lerp(p.z,sample(i+2),effort),
+                    }
+                },
+                hip = joint(rest.hip,0),
+                knee = joint(rest.knee,1),
+                hock = joint(rest.hock,2),
+                foot = joint(rest.foot,3)
+            rod(tr(hip), tr(knee), front ? 0.065 : 0.075, coat)
+            // Keep the actual forward-facing stifle visible below the flank.
+            if (!front)
+                body(knee.x, knee.y, knee.z, 0.075, 0.08, 0.075, coat)
+            rod(knee, hock, front ? 0.04 : 0.042, coat, tr)
+            if (!front) {
+                tube([hock, foot], [0.03, 0.018], dark, tr, 6)
+            } else rod(hock, foot, 0.027, dark, tr)
+            body(foot.x, foot.y, foot.z + 0.025, 0.043, 0.038, 0.07, dark)
         }
         // Neck reaches forwards and down; skull pitches independently.
         // The muzzle stays in front of the forelegs throughout the transition.
@@ -773,13 +783,13 @@ export function mountRiverlight(root: HTMLElement) {
                       : 1,
             eased = rise * rise * (3 - 2 * rise),
             grazing = 1 - eased,
-            angle = .65*grazing + effort*(.20+.12*Math.sin((cycle-.14)*C.TAU)),
+            angle = .65*grazing + bodyPitch*.75,
             headY = C.lerp(
                 0.38 + Math.sin(s.time * 0.65 + o.phase) * 0.01,
-                1.73-effort*(.17+.09*Math.sin((cycle-.06)*C.TAU)),
+                C.lerp(1.73,sample(2),effort),
                 eased
             ),
-            headZ = C.lerp(1.08,.74+effort*(.14+.06*flight),eased),
+            headZ = C.lerp(1.08,C.lerp(.74,sample(3),effort),eased),
             headTr = (p: Point): Point => {
                 const y = p.y - 1.73,
                     z = p.z - 0.74
