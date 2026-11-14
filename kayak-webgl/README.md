@@ -14,6 +14,8 @@ Open [localhost:4173](http://127.0.0.1:4173). The build in `dist/` is static, wo
 
 Use **← / →**, the on-screen paddle buttons, or tap either side of the water. Alternate sides to keep moving forward. Tap the kayak icon in the top right to see time, distance, and strokes.
 
+Use the speaker icon to hear soft paddle splashes, water along the hull, nearby birds taking off and occasional distant birdsong. Sound starts off on each visit and loads only when selected. Serve the game over HTTP to enable audio when testing locally. See [audio credits](audio/README.md).
+
 - `src/core.ts` keeps the physics and paddle animation from the Framer component.
 - `src/game.ts` handles input, camera, terrain, geometry, and wildlife.
 - `src/renderer.ts` batches geometry, renders a smaller mirrored scene for reflections, and renders the main scene with depth testing.

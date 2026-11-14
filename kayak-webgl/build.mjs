@@ -1,6 +1,6 @@
 import { build } from "esbuild"
 import { createHash } from "node:crypto"
-import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises"
+import { copyFile, cp, mkdir, readFile, rm, writeFile } from "node:fs/promises"
 import { fileURLToPath } from "node:url"
 
 const here = name => fileURLToPath(new URL(name, import.meta.url))
@@ -14,6 +14,8 @@ await build({
     legalComments: "none",
 })
 await copyFile(here("style.css"), here("dist/style.css"))
+await rm(here("dist/audio/"), { recursive: true, force: true })
+await cp(here("audio/"), here("dist/audio/"), { recursive: true })
 let html = await readFile(here("index.html"), "utf8")
 for (const asset of ["style.css", "game.js"]) {
     const contents = await readFile(here("dist/" + asset))

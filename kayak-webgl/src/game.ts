@@ -3,6 +3,7 @@ import { gallopFrames, GALLOP_STRIDE } from "./deer-gallop"
 import { advanceBird, birdDeparture } from "./wildlife"
 import { RiverRenderer } from "./renderer"
 import { drawKayak } from "./kayak"
+import { createRiverSound } from "./sound"
 import type { Projected, Point, Deer, Habitat, RiverBird, Tree, Transform, Wake } from "./types"
 
 const FOCAL_RATIO = 1.08
@@ -61,6 +62,8 @@ export function mountRiverlight(root: HTMLElement) {
     const FRAME_MS = 1000 / 60
     // Runtime-owned UI is removed on unmount, including Framer remounts.
     const lamp = document.createElement("button"),
+        soundButton = document.createElement("button"),
+        toolbar = document.createElement("div"),
         stats = document.createElement("div")
     lamp.type = "button"
     lamp.className = "rl-lamp"
@@ -68,12 +71,21 @@ export function mountRiverlight(root: HTMLElement) {
     lamp.setAttribute("aria-expanded", "false")
     lamp.innerHTML =
         '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 14c3 1 6 1.5 10 1.5s7-.5 10-1.5l-3.2 4H5.2L2 14Z"/><circle cx="12" cy="6" r="1.5"/><path d="m11 9-1 4h5m-4-4 4 2 3 4M6 6l12 11m-13-12 2 1-1 1-2-1m13 10 2 1-1 1-2-1"/></svg>'
+    soundButton.type = "button"
+    soundButton.className = "rl-sound"
+    soundButton.setAttribute("aria-label", "Sound")
+    soundButton.setAttribute("aria-pressed", "false")
+    soundButton.innerHTML =
+        '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4Z"/><path data-mute d="m17 10 4 4m0-4-4 4"/><path data-waves d="M16 9a4.3 4.3 0 0 1 0 6m2.6-8.5a7.8 7.8 0 0 1 0 11"/></svg>'
+    toolbar.className = "rl-tools"
+    toolbar.append(soundButton, lamp)
+    const sound = createRiverSound(soundButton)
     stats.className = "rl-stats"
     stats.setAttribute("role", "group")
     stats.dataset.open = "false"
     stats.setAttribute("aria-hidden", "true")
     root.appendChild(stats)
-    root.appendChild(lamp)
+    root.appendChild(toolbar)
     let statsOpen = false,
         tripDistance = 0
     let statsTimer: ReturnType<typeof setTimeout> | undefined
@@ -127,6 +139,13 @@ export function mountRiverlight(root: HTMLElement) {
             e.stopPropagation()
             showStats()
             canvas.focus({ preventScroll: true })
+        })
+        on(soundButton, "click", (e) => {
+            e.stopPropagation()
+            void sound.toggle()
+        })
+        on(soundButton, "keydown", (e) => {
+            if (e.key === "Enter" || e.key === " ") e.stopPropagation()
         })
     }
     const pitch = 0.245,
@@ -977,6 +996,9 @@ export function mountRiverlight(root: HTMLElement) {
                     if (!departure) continue
                     o.departure = departure
                     o.flying = true
+                    const lateral = (o.x - s.x) * Math.cos(s.heading) -
+                        (o.z - s.z) * Math.sin(s.heading)
+                    sound.takeoff(distance, lateral)
                 }
             } else {
                 advanceBird(o,dt)
@@ -1377,11 +1399,15 @@ export function mountRiverlight(root: HTMLElement) {
             (Math.floor(Math.max(0, t - nextFrame) / FRAME_MS) + 1) * FRAME_MS
         const dt = last ? Math.min((t - last) / 1000, 0.25) : 0
         last = t
+        sound.ambience(dt)
         if (!reduced) visualTime += dt
         if (started) {
             const beforeX = s.x,
-                beforeZ = s.z
+                beforeZ = s.z,
+                beforeContacts = s.contacts
             C.simulate(s, dt)
+            sound.glide(s.speed)
+            if (s.contacts > beforeContacts) sound.paddle(s.lastSide)
             tripDistance += Math.hypot(s.x - beforeX, s.z - beforeZ)
             if (statsOpen) refreshStats()
             updateDeer(dt)
@@ -1472,6 +1498,7 @@ export function mountRiverlight(root: HTMLElement) {
         })
         on(document, "visibilitychange", () => {
             last = 0
+            sound.setActive(visible && !document.hidden && !lost)
             if (document.hidden) {
                 cancelAnimationFrame(raf)
                 raf = 0
@@ -1488,6 +1515,7 @@ export function mountRiverlight(root: HTMLElement) {
     ro.observe(root)
     const io = new IntersectionObserver((es) => {
         visible = es[0].isIntersecting
+        sound.setActive(visible && !document.hidden && !lost)
         last = 0
         if (visible) schedule()
         else {
@@ -1506,7 +1534,8 @@ export function mountRiverlight(root: HTMLElement) {
         io.disconnect()
         listeners.splice(0).forEach((f) => f())
         clearTimeout(statsTimer)
-        lamp.remove()
+        sound.destroy()
+        toolbar.remove()
         stats.remove()
         reedRoots.clear()
         reedBends.clear()
@@ -1523,6 +1552,7 @@ export function mountRiverlight(root: HTMLElement) {
     }
     on(window, "pagehide", (e) => {
         if (e.persisted) {
+            sound.setActive(false)
             cancelAnimationFrame(raf)
             raf = 0
             last = 0
@@ -1531,6 +1561,7 @@ export function mountRiverlight(root: HTMLElement) {
     })
     on(window, "pageshow", () => {
         last = 0
+        sound.setActive(visible && !document.hidden && !lost)
         schedule()
     })
     updateDeer(0)
@@ -1538,6 +1569,7 @@ export function mountRiverlight(root: HTMLElement) {
     on(canvas, "webglcontextlost", (event) => {
         event.preventDefault()
         lost = true
+        sound.setActive(false)
         cancelAnimationFrame(raf)
         raf = 0
         resetStroke()
@@ -1548,6 +1580,7 @@ export function mountRiverlight(root: HTMLElement) {
             gpu = new RiverRenderer(canvas)
             root.dataset.renderer = "webgl2"
             lost = false
+            sound.setActive(visible && !document.hidden)
             last = 0
             draw()
             schedule()
